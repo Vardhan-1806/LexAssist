@@ -6,8 +6,23 @@
   <title>LEXASSIST – AI-Powered Legal Assistance Platform</title>
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/auth.css">
+  <link rel="stylesheet" href="/css/premium.css">
 </head>
 <body class="landing-body">
+
+  <div class="brand-intro" id="brandIntro" hidden aria-hidden="true">
+    <div class="brand-intro-content" role="status" aria-live="polite">
+      <svg class="brand-intro-mark" viewBox="0 0 72 72" aria-hidden="true">
+        <path class="intro-document" d="M20 9h22l12 12v42H20zM42 9v13h12M28 34h18M28 42h18M28 50h10" />
+        <path class="intro-letter" d="M33 28v22h14" />
+        <circle class="intro-node" cx="53" cy="21" r="2" />
+      </svg>
+      <div class="brand-intro-name">LEX<span>ASSIST</span></div>
+      <div class="brand-intro-tagline">Understand the law. Know your next step.</div>
+      <button class="brand-intro-skip" id="skipIntro" type="button">Skip introduction</button>
+    </div>
+    <div class="brand-intro-line" aria-hidden="true"></div>
+  </div>
 
   <!-- Navbar -->
   <nav class="navbar">
@@ -28,18 +43,27 @@
   <section class="hero">
     <div class="hero-inner">
       <div>
-        <div class="hero-eyebrow">⚖️ AI-Powered Legal Platform</div>
-        <h1>Justice Made<br><span>Simple & Accessible</span></h1>
-        <p class="hero-desc">LEXASSIST combines AI-powered legal assistance, simplified case tracking, lawyer consultation, and intelligent case management — all in one platform built for every citizen.</p>
+        <div class="hero-eyebrow">A clearer way to navigate legal matters</div>
+        <h1>Legal clarity.<br><span>Within reach.</span></h1>
+        <p class="hero-desc">Understand legal information, follow your case progress, and connect with a legal professional through one thoughtful platform.</p>
         <div class="hero-cta">
-          <a href="/register" class="btn btn-primary btn-lg">Get Free Access →</a>
-          <a href="#how-it-works" class="btn btn-secondary btn-lg">See How It Works</a>
+          <a href="/chatbot" class="btn btn-primary btn-lg">Explore Lexi AI →</a>
+          <a href="/lawyers" class="btn btn-secondary btn-lg">Find a Lawyer</a>
         </div>
         <div class="hero-stats">
-          <div><div class="hero-stat-num">24/7</div><div class="hero-stat-lbl">AI Legal Help Available</div></div>
-          <div><div class="hero-stat-num">Free</div><div class="hero-stat-lbl">For Every Citizen</div></div>
-          <div><div class="hero-stat-num">100%</div><div class="hero-stat-lbl">Data Encrypted</div></div>
+          <div><div class="hero-stat-num">Ask</div><div class="hero-stat-lbl">in everyday language</div></div>
+          <div><div class="hero-stat-num">Follow</div><div class="hero-stat-lbl">your case milestones</div></div>
+          <div><div class="hero-stat-num">Connect</div><div class="hero-stat-lbl">with legal professionals</div></div>
         </div>
+      </div>
+      <div class="hero-visual" aria-label="Illustrative LexAssist interface preview">
+        <div class="preview-topline"><span class="preview-mark">L</span><span>LEXASSIST <small>WORKSPACE PREVIEW</small></span><span class="preview-dot"></span></div>
+        <div class="preview-welcome"><span class="preview-label">YOUR LEGAL WORKSPACE</span><strong>A clearer next step starts here.</strong><span>Illustrative preview · Sample content</span></div>
+        <div class="preview-grid">
+          <div class="preview-tile preview-case"><span class="preview-tile-icon">▤</span><span class="preview-label">CASE OVERVIEW</span><strong>Track key milestones</strong><div class="preview-track"><i></i><i></i><i></i><i></i></div><span class="preview-caption">Progress shown from your case records</span></div>
+          <div class="preview-tile preview-lexi"><span class="preview-tile-icon">✳</span><span class="preview-label">LEXI · LEGAL ASSISTANT</span><strong>Understand the information</strong><div class="preview-answer">“Here’s a plain-language explanation of the next step…”</div><span class="preview-caption">AI-generated · Check sources and seek legal advice</span></div>
+        </div>
+        <div class="preview-footer"><span>Cases</span><span>Lexi AI</span><span>Lawyer discovery</span></div>
       </div>
     </div>
   </section>
@@ -48,18 +72,18 @@
   <section class="section section-light" id="features">
     <div class="section-header">
       <div class="section-eyebrow">Platform Features</div>
-      <h2>Everything You Need for Legal Success</h2>
-      <p>A comprehensive suite of tools designed to make legal processes transparent, efficient, and accessible to every citizen.</p>
+      <h2>Tools for your next legal step</h2>
+      <p>Keep legal questions, case information, and professional discovery in one easier-to-navigate workspace.</p>
     </div>
     <div class="features-grid">
-      <div class="feature-card"><div class="feature-icon">🤖</div><h3>AI Legal Chatbot (RAG)</h3><p>Ask legal questions in plain language. Our AI uses your 2000-case Indian law dataset to provide accurate answers around the clock.</p></div>
+      <div class="feature-card"><div class="feature-icon">✳</div><h3>Legal information with Lexi</h3><p>Ask questions in plain language and review the answer and any source details returned by the assistant.</p></div>
       <div class="feature-card"><div class="feature-icon">📋</div><h3>Case Status Simplified</h3><p>Complex court language translated into simple terms. Know your case number, status, next hearing date, and exactly what actions you need to take.</p></div>
-      <div class="feature-card"><div class="feature-icon">📈</div><h3>Visual Case Timeline</h3><p>Track your case through 5 clear stages — from filing to judgment. Know exactly where your case stands at every moment.</p></div>
-      <div class="feature-card"><div class="feature-icon">🎯</div><h3>Smart Case Priority</h3><p>AI automatically assigns 🔴 High, 🟠 Medium, or 🟢 Low priority based on hearing dates. Never miss an urgent deadline again.</p></div>
+      <div class="feature-card"><div class="feature-icon">📈</div><h3>Case timeline</h3><p>Review the milestones recorded for your case and see recent updates in context.</p></div>
+      <div class="feature-card"><div class="feature-icon">🎯</div><h3>Case priorities</h3><p>Review case status and priority information together so upcoming work is easier to spot.</p></div>
       <div class="feature-card"><div class="feature-icon">📅</div><h3>Integrated Legal Calendar</h3><p>Unified calendar showing hearing dates, appointments, deadlines, and reminders for both citizens and lawyers.</p></div>
       <div class="feature-card"><div class="feature-icon">🔍</div><h3>Lawyer Discovery</h3><p>Find verified lawyers by specialization, city, experience, and ratings. View detailed profiles with real client reviews.</p></div>
       <div class="feature-card"><div class="feature-icon">📄</div><h3>Legal Document Generator</h3><p>Generate FIR drafts, bail applications, RTI applications, consumer complaints, and legal notices — download as PDF instantly.</p></div>
-      <div class="feature-card"><div class="feature-icon">🔍</div><h3>Similar Case Finder</h3><p>Search 2,000+ Indian court judgments to find cases similar to yours and understand how they were decided.</p></div>
+      <div class="feature-card"><div class="feature-icon">🔍</div><h3>Case research</h3><p>Explore the legal research tools available in the platform to find relevant case information.</p></div>
       <div class="feature-card"><div class="feature-icon">🆓</div><h3>Free Legal Aid Checker</h3><p>3-step eligibility checker to find out if you qualify for completely free legal help under NALSA.</p></div>
     </div>
   </section>
@@ -131,7 +155,7 @@
   <!-- CTA -->
   <section class="cta-banner">
     <h2>Access Justice — Starting Today</h2>
-    <p>Join thousands of citizens and lawyers using LEXASSIST to simplify the legal process.</p>
+    <p>Bring case information, legal questions, and professional discovery into one workspace.</p>
     <div class="cta-btns">
       <a href="/register" class="btn btn-primary btn-lg">Create Free Account →</a>
       <a href="/chatbot"  class="btn btn-secondary btn-lg">Try AI Chatbot</a>
@@ -173,12 +197,37 @@
       </div>
     </div>
     <div class="footer-bottom">
-      <span>© 2024 LEXASSIST. All rights reserved.</span>
+      <span>© <span id="currentYear"></span> LEXASSIST. All rights reserved.</span>
       <span>Built for the people of India 🇮🇳</span>
     </div>
   </footer>
 
   <script>
+    document.getElementById('currentYear').textContent = new Date().getFullYear();
+    (() => {
+      const intro = document.getElementById('brandIntro');
+      const skip = document.getElementById('skipIntro');
+      const key = 'lexassist-intro-seen';
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      let alreadySeen = false;
+      try { alreadySeen = sessionStorage.getItem(key) === '1'; } catch (_) {}
+      const finishIntro = () => {
+        intro.classList.remove('is-visible');
+        intro.setAttribute('aria-hidden', 'true');
+        window.setTimeout(() => { intro.hidden = true; document.body.classList.remove('intro-playing'); }, 300);
+        try { sessionStorage.setItem(key, '1'); } catch (_) {}
+      };
+      if (!alreadySeen && !reducedMotion) {
+        intro.hidden = false;
+        intro.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('intro-playing');
+        requestAnimationFrame(() => intro.classList.add('is-visible'));
+        const timer = window.setTimeout(finishIntro, 1900);
+        skip.addEventListener('click', () => { window.clearTimeout(timer); finishIntro(); });
+      } else {
+        try { sessionStorage.setItem(key, '1'); } catch (_) {}
+      }
+    })();
     // Mobile navbar toggle
     document.getElementById('hamburger').addEventListener('click', () => {
       const links = document.querySelector('.navbar-links');

@@ -1,101 +1,54 @@
-# LEXASSIST — Deployment Guide (Railway + MongoDB Atlas)
+# LexAssist deployment guide
 
-## ─── Step 1: MongoDB Atlas (Free Database) ────────────────
+LexAssist is a Node.js/Express application backed by MongoDB. The checked-in Railway configuration starts `node server.js` and uses `/api/health` for its deployment health check.
 
-1. Go to **mongodb.com/atlas** → Sign up free
-2. Create project → Create cluster → Select **M0 Free** tier
-3. Database Access → Add User → username + password (save these!)
-4. Network Access → Add IP → **0.0.0.0/0** (allow all, important for Railway)
-5. Connect → Drivers → Copy connection string
-6. Replace `<password>` with your actual password
-7. Your MONGO_URI looks like:
-   `mongodb+srv://yourusername:yourpassword@cluster0.xxxxx.mongodb.net/lexassist`
+## 1. Prepare MongoDB Atlas
 
-## ─── Step 2: Push to GitHub ──────────────────────────────
+1. Create an Atlas project and cluster.
+2. Create a database user with access limited to the LexAssist database. Use a unique, strong password.
+3. Configure Atlas network access for the Railway service's outbound address or a private connection supported by your plan. Avoid `0.0.0.0/0`; Atlas documents that this allows access from anywhere and can expose the database to unauthorized access. See [Atlas IP access lists](https://www.mongodb.com/docs/atlas/security/ip-access-list/).
+4. Copy the application's connection string. Keep it private and add it only as a Railway variable.
 
-```bash
-cd LEXASSIST
-git init
-git add .
-git commit -m "LEXASSIST v4 - Production Ready"
-git branch -M main
-git remote add origin https://github.com/YOURUSERNAME/LEXASSIST.git
-git push -u origin main
-```
+## 2. Create the Railway service
 
-## ─── Step 3: Deploy on Railway ───────────────────────────
+1. Connect the GitHub repository to Railway and select the reviewed LexAssist branch.
+2. Use the repository root as the service root directory. Railway can detect the Node.js app from `package.json`; its start command is also set in `railway.json`.
+3. Add these service variables:
 
-1. Go to **railway.app** → Login with GitHub
-2. New Project → Deploy from GitHub → Select LEXASSIST repo
-3. Railway auto-detects Node.js and deploys!
-4. Go to **Variables** tab and add ALL these:
+   | Variable | Value |
+   | --- | --- |
+   | `NODE_ENV` | `production` |
+   | `MONGO_URI` | Atlas connection string |
+   | `JWT_SECRET` | Unique random value with at least 32 characters |
+   | `SESSION_SECRET` | Different unique random value with at least 32 characters |
+   | `CLIENT_URL` | `https://` plus the generated Railway domain |
+   | `UPLOAD_DIR` | `/app/uploads` |
 
-```
-MONGO_URI        = mongodb+srv://...your Atlas connection string...
-JWT_SECRET       = lexassist_jwt_secret_minimum_32_characters_long
-SESSION_SECRET   = lexassist_session_secret_another_random_string
-NODE_ENV         = production
-PORT             = 5000
-CLIENT_URL       = (copy from Railway after first deploy - Settings tab)
-EMAIL_USER       = yourgmail@gmail.com (optional)
-EMAIL_PASS       = your_gmail_app_password (optional)
-OPENAI_API_KEY   = sk-... (optional, chatbot works without it)
-```
+   Railway injects `PORT`; the app listens on that port. Never commit production secrets or paste them into chat.
 
-5. Go to **Settings** → **Networking** → **Generate Domain**
-6. Copy your URL (like: lexassist-production.up.railway.app)
-7. Add it back as `CLIENT_URL` in Variables
-8. Railway will auto-redeploy
+4. Generate a Railway domain under the service's networking settings. Set `CLIENT_URL` to that HTTPS origin and redeploy the variable changes. Railway applies variable edits as staged changes that require deployment. See [Railway variables](https://docs.railway.com/variables).
+5. Keep the health check set to `/api/health`. Railway requires a successful 2xx response for the check to pass. See [Railway health checks](https://docs.railway.com/deployments/healthchecks).
 
-## ─── Step 4: Seed Database ───────────────────────────────
+## 3. Persist uploaded documents
 
-After deploying, run the seed command once in Railway:
-- Go to your Railway project
-- Click on your service
-- Click **Railway Shell** or use **New Service → Terminal**
+Add a Railway volume mounted at `/app/uploads`. `UPLOAD_DIR` must match the mount path. Uploaded legal documents are served through authenticated ownership checks or an expiring share token; they are not exposed as a public static directory. Without a persistent volume, uploaded files can be lost when the service is replaced.
 
-```bash
-node DataBase_Ai_Data/seed.js
-```
+For an existing deployment, copy its current `uploads` contents to the persistent volume before changing `UPLOAD_DIR`. Mounting a new, empty volume over a populated directory hides the previous files until they are migrated.
 
-## ─── Step 5: Test Your Live App ──────────────────────────
+## 4. Optional integrations
 
-Open your Railway URL:
-```
-https://lexassist-production.up.railway.app
-```
+- Set `OPENAI_API_KEY` only if the deployment should use the OpenAI-backed assistant. Otherwise, the app uses its configured fallback behavior.
+- Set `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, and `EMAIL_PASS` only when email delivery is configured. Use provider app credentials, never an account password.
 
-Login with demo accounts:
-- Citizen:  rajesh@example.com / User@123
-- Lawyer:   priya@lexassist.com / Lawyer@123
-- Admin:    admin@lexassist.com / Admin@123
+## 5. First deployment checks
 
-## ─── Gmail Setup for Emails ──────────────────────────────
+1. Confirm `/api/health` returns `{"status":"ok", ...}` and the landing page loads.
+2. Use a disposable staging database and test account to check registration, login, case creation, and lawyer discovery.
+3. Upload a non-sensitive sample file. Confirm an unauthenticated request cannot fetch its private file path, its owner can open it, and an expiring share link works only until its expiry.
+4. Check Railway logs for database, mail, and application errors.
 
-1. Gmail → Google Account → Security
-2. Enable **2-Step Verification** (required)
-3. Search for **App Passwords**
-4. Select App: Mail → Select Device: Windows Computer
-5. Click Generate → Copy the 16-character password
-6. Paste in Railway as EMAIL_PASS
+Do not seed the public deployment with demo accounts or real legal documents. Use only fictitious, non-sensitive data in a public showcase. The app is an educational project and must not be presented as a substitute for advice from a qualified lawyer.
 
-## ─── Common Errors & Fixes ───────────────────────────────
+## Local environment
 
-| Error | Fix |
-|-------|-----|
-| MongoDB connection timeout | Check 0.0.0.0/0 in Atlas Network Access |
-| Session error on start | Make sure SESSION_SECRET is set in Variables |
-| Emails not sending | Check Gmail App Password (not regular password!) |
-| 404 on all pages | Check PORT=5000 and NODE_ENV=production |
-| Build fails | Check package.json engines: node >=18.0.0 |
-
-## ─── Costs ────────────────────────────────────────────────
-
-| Service | Cost |
-|---------|------|
-| Railway | $5 free credit/month (enough for student project) |
-| MongoDB Atlas M0 | FREE forever (512MB) |
-| GitHub | FREE |
-| OpenAI | Optional (chatbot works without it) |
-
-**Total cost for student project: $0** ✅
+Copy `.env.example` to `.env` for local development and fill it with local or disposable credentials. `.env` is ignored by Git. Use distinct production secrets in Railway.

@@ -6,6 +6,7 @@
   <title>AI Legal Chatbot – LEXASSIST</title>
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/chatbot.css">
+  <link rel="stylesheet" href="/css/premium.css">
 </head>
 <body>
   <nav class="navbar">
@@ -29,7 +30,7 @@
         <div class="chat-ai-avatar">🤖</div>
         <div>
           <div class="chat-ai-name">LEXI – AI Legal Assistant</div>
-          <div class="chat-ai-status">● Online · 2000+ Indian court cases</div>
+          <div class="chat-ai-status">● Ready to help you understand legal information</div>
         </div>
         <div class="chat-header-actions">
           <a href="/similar-cases"     class="btn btn-outline btn-sm">🔍 Similar Cases</a>
@@ -41,8 +42,8 @@
         <div class="chat-welcome">
           <div class="chat-welcome-icon">⚖️</div>
           <h3>Welcome to LEXI</h3>
-          <p>Ask any legal question or upload a legal document for me to explain in simple language.</p>
-          <p class="chat-welcome-note">For professional advice, consult a verified lawyer.</p>
+          <p>Ask a question in everyday language, or upload a document for a plain-language explanation.</p>
+          <p class="chat-welcome-note">Lexi provides general legal information. Review any sources shown and consult a qualified lawyer for advice about your situation.</p>
         </div>
       </div>
 
@@ -101,15 +102,20 @@
     initVoice();
 
     // ── Messages ──────────────────────────────────────────────
+    const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    })[char]);
+
     const addMsg = (role, content, sources=[]) => {
       const wrap = document.createElement('div');
       wrap.className = `msg-wrap ${role}`;
-      const avatar = role==='ai' ? '🤖' : (user.name||'U')[0].toUpperCase();
+      const avatar = escapeHtml(role==='ai' ? '🤖' : (user.name||'U')[0].toUpperCase());
+      const safeContent = escapeHtml(content).replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');
       wrap.innerHTML = `
         <div class="msg-avatar ${role}">${avatar}</div>
         <div>
-          <div class="msg-content ${role}">${content.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>')}</div>
-          ${sources.length?`<div class="msg-sources">${sources.map(s=>`<span class="msg-src-tag">📄 ${s}</span>`).join('')}</div>`:''}
+          <div class="msg-content ${role}">${safeContent}</div>
+          ${sources.length?`<div class="msg-sources">${sources.map(s=>`<span class="msg-src-tag">📄 ${escapeHtml(s)}</span>`).join('')}</div>`:''}
         </div>`;
       msgs.appendChild(wrap);
       msgs.scrollTop = msgs.scrollHeight;
@@ -176,7 +182,15 @@
         const d = await API.get('/api/chatbot/history');
         const el = document.getElementById('historyList');
         if (!d.data?.length) { el.innerHTML='<div style="color:rgba(255,255,255,0.28);font-size:0.78rem">No previous chats</div>'; return; }
-        el.innerHTML = d.data.slice(0,8).map(h=>`<div class="history-item" onclick="loadSession('${h.session}')">💬 ${(h.messages[0]?.content||'Legal query').slice(0,36)}...</div>`).join('');
+        el.replaceChildren();
+        d.data.slice(0,8).forEach(h => {
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.className = 'history-item';
+          item.textContent = `💬 ${(h.messages[0]?.content||'Legal query').slice(0,36)}...`;
+          item.addEventListener('click', () => loadSession(h.session));
+          el.appendChild(item);
+        });
       } catch(e) {}
     };
 

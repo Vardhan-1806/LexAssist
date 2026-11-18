@@ -4,7 +4,7 @@ node_modules/
 .DS_Store
 dist/
 coverage/
-uploads/temp/
+uploads/
 Ai_Chatbot_Rag/embeddings/vector_store/
 *.faiss
 *.pkl

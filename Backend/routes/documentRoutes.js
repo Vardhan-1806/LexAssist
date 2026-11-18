@@ -9,16 +9,18 @@ const path     = require('path');
 const fs       = require('fs');
 const crypto   = require('crypto');
 const { Document, Notification } = require('../models/Extras');
+const Case = require('../models/Case');
 const { protect } = require('../middleware/auth');
+const { documentDirectory, documentPath } = require('../utils/uploadStorage');
 
 // Multer config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = 'uploads/documents/';
+    const dir = documentDirectory;
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive:true });
     cb(null, dir);
   },
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname.replace(/\s+/g,'-')}`)
+  filename: (req, file, cb) => cb(null, `${Date.now()}-${path.basename(file.originalname.replace(/\\/g,'/')).replace(/[^\w.-]/g,'-')}`)
 });
 const upload = multer({
   storage,
@@ -60,7 +62,7 @@ router.post('/', protect, upload.single('file'), async (req, res) => {
       description:  req.body.description || '',
       case:         req.body.caseId || undefined,
       uploadedBy:   req.user.id,
-      fileUrl:      `/uploads/documents/${req.file.filename}`,
+      fileUrl:      req.file.filename,
       fileType:     req.file.mimetype,
       fileSize:     req.file.size,
       originalName: req.file.originalname,
@@ -94,7 +96,9 @@ router.get('/:id', protect, async (req, res) => {
       .populate('uploadedBy','name email');
     if (!doc) return res.status(404).json({ success:false, message:'Document not found' });
     // Check access
-    if (doc.uploadedBy._id.toString() !== req.user.id && !doc.isPublic && !doc.sharedWith.includes(req.user.id)) {
+    const ownerId = doc.uploadedBy?._id?.toString() || doc.uploadedBy?.toString();
+    const isSharedWithUser = (doc.sharedWith || []).some(userId => userId.toString() === req.user.id);
+    if (ownerId !== req.user.id && !doc.isPublic && !isSharedWithUser) {
       return res.status(403).json({ success:false, message:'Access denied' });
     }
     res.json({ success:true, data:doc });
@@ -109,11 +113,25 @@ router.delete('/:id', protect, async (req, res) => {
     if (doc.uploadedBy.toString() !== req.user.id) return res.status(403).json({ success:false, message:'Not authorized' });
 
     // Delete physical file
-    const filePath = path.join(__dirname, '../../', doc.fileUrl);
+    const filePath = documentPath(doc.fileUrl);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     await doc.deleteOne();
 
     res.json({ success:true, message:'Document deleted' });
+  } catch(err) { res.status(500).json({ success:false, message:err.message }); }
+});
+
+// Serve private document content only after checking its owner or explicit share list.
+router.get('/:id/file', protect, async (req, res) => {
+  try {
+    const doc = await Document.findById(req.params.id);
+    if (!doc) return res.status(404).json({ success:false, message:'Document not found' });
+    const isOwner = doc.uploadedBy.toString() === req.user.id;
+    const isSharedWithUser = (doc.sharedWith || []).some(userId => userId.toString() === req.user.id);
+    if (!isOwner && !doc.isPublic && !isSharedWithUser) {
+      return res.status(403).json({ success:false, message:'Access denied' });
+    }
+    return sendDocumentFile(doc, req, res);
   } catch(err) { res.status(500).json({ success:false, message:err.message }); }
 });
 
@@ -126,7 +144,8 @@ router.post('/:id/share', protect, async (req, res) => {
 
     // Generate unique share token
     const token   = crypto.randomBytes(32).toString('hex');
-    const days    = parseInt(req.body.days) || 7;
+    const requestedDays = Number.parseInt(req.body.days, 10);
+    const days = [1, 3, 7, 30].includes(requestedDays) ? requestedDays : 7;
     const expiry  = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
     doc.shareToken  = token;
@@ -147,22 +166,47 @@ router.get('/shared/:token', async (req, res) => {
       .populate('case','caseNumber title');
 
     if (!doc) return res.status(404).json({ success:false, message:'Invalid or expired share link' });
-    if (doc.shareExpiry && doc.shareExpiry < new Date()) return res.status(410).json({ success:false, message:'Share link has expired' });
+    if (!doc.shareExpiry || doc.shareExpiry < new Date()) return res.status(410).json({ success:false, message:'Share link has expired' });
 
-    // Increment download count
-    doc.downloadCount += 1;
+    res.json({ success:true, data:{ title:doc.title, fileUrl:`/api/documents/shared/${encodeURIComponent(req.params.token)}/file`, fileType:doc.fileType, fileSize:doc.fileSize, originalName:doc.originalName, uploadedBy:doc.uploadedBy?.name, uploadedAt:doc.createdAt, case:doc.case, expiresAt:doc.shareExpiry } });
+  } catch(err) { res.status(500).json({ success:false, message:err.message }); }
+});
+
+router.get('/shared/:token/file', async (req, res) => {
+  try {
+    const doc = await Document.findOne({ shareToken: req.params.token });
+    if (!doc) return res.status(404).json({ success:false, message:'Invalid or expired share link' });
+    if (!doc.shareExpiry || doc.shareExpiry < new Date()) return res.status(410).json({ success:false, message:'Share link has expired' });
+    doc.downloadCount = (doc.downloadCount || 0) + 1;
     await doc.save();
-
-    res.json({ success:true, data:{ title:doc.title, fileUrl:doc.fileUrl, fileType:doc.fileType, fileSize:doc.fileSize, originalName:doc.originalName, uploadedBy:doc.uploadedBy?.name, uploadedAt:doc.createdAt, case:doc.case, expiresAt:doc.shareExpiry } });
+    res.set('Cache-Control', 'private, no-store');
+    return sendDocumentFile(doc, req, res);
   } catch(err) { res.status(500).json({ success:false, message:err.message }); }
 });
 
 // @route GET /api/documents/case/:caseId — Get docs for a case
 router.get('/case/:caseId', protect, async (req, res) => {
   try {
+    const legalCase = await Case.findById(req.params.caseId).select('citizen lawyer');
+    if (!legalCase) return res.status(404).json({ success:false, message:'Case not found' });
+    const userId = req.user.id;
+    const canAccess = req.user.role === 'admin'
+      || legalCase.citizen.toString() === userId
+      || legalCase.lawyer?.toString() === userId;
+    if (!canAccess) return res.status(403).json({ success:false, message:'Access denied' });
     const docs = await Document.find({ case:req.params.caseId }).populate('uploadedBy','name').sort('-createdAt');
     res.json({ success:true, data:docs });
   } catch(err) { res.status(500).json({ success:false, message:err.message }); }
 });
 
 module.exports = router;
+
+function sendDocumentFile(doc, req, res) {
+  const filePath = documentPath(doc.fileUrl);
+  const filename = path.basename(doc.originalName || doc.fileUrl).replace(/[\r\n"]/g, '_');
+  if (!fs.existsSync(filePath)) return res.status(404).json({ success:false, message:'Document file not found' });
+  res.set('Cache-Control', 'private, no-store');
+  if (req.query.download === '1') return res.download(filePath, filename);
+  res.type(path.extname(filePath).slice(1));
+  return res.sendFile(filePath);
+}

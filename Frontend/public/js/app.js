@@ -29,6 +29,41 @@ const API = {
   delete: async (url)       => (await fetch(url, { method:'DELETE', headers: Auth.headers() })).json(),
 };
 
+// Private document downloads require the signed-in user's bearer token.
+const SecureFiles = {
+  open: async (documentId, download = false) => {
+    const previewWindow = download ? null : window.open('about:blank', '_blank');
+    if (previewWindow) previewWindow.opener = null;
+    try {
+      const query = download ? '?download=1' : '';
+      const response = await fetch(`/api/documents/${encodeURIComponent(documentId)}/file${query}`, {
+        headers: { 'Authorization': `Bearer ${Auth.token()}` },
+      });
+      if (!response.ok) throw new Error('Could not access this document. Check your sign-in and sharing access.');
+      const file = await response.blob();
+      const fileUrl = URL.createObjectURL(file);
+      if (download) {
+        const anchor = document.createElement('a');
+        anchor.href = fileUrl;
+        const disposition = response.headers.get('content-disposition') || '';
+        const fileName = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+        anchor.download = fileName || 'legal-document';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      } else if (previewWindow) {
+        previewWindow.location.replace(fileUrl);
+      } else {
+        window.location.assign(fileUrl);
+      }
+      window.setTimeout(() => URL.revokeObjectURL(fileUrl), 60000);
+    } catch (error) {
+      previewWindow?.close();
+      Toast.show(error.message || 'Unable to open document.', 'danger');
+    }
+  }
+};
+
 // ── Toast ─────────────────────────────────────────────────────
 const Toast = {
   show: (msg, type = 'success', ms = 4000) => {

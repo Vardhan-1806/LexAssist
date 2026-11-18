@@ -4,9 +4,10 @@ const multer  = require('multer');
 const path    = require('path');
 const { sendMessage, getChatHistory, deleteSession, searchKB, analyzeDocument, getKBStats } = require('../controllers/chatbotController');
 const { protect } = require('../middleware/auth');
+const { temporaryDirectory } = require('../utils/uploadStorage');
 
 const upload = multer({
-  dest: 'uploads/temp/',
+  dest: temporaryDirectory,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['.pdf','.txt','.doc','.docx'];

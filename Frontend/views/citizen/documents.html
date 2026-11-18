@@ -26,6 +26,7 @@
     .file-type-img{background:rgba(16,185,129,0.1)} .file-type-txt{background:rgba(100,116,139,0.1)}
     @media(max-width:480px){.doc-grid{grid-template-columns:1fr}}
   </style>
+  <link rel="stylesheet" href="/css/premium.css">
 </head>
 <body>
   <nav class="navbar">
@@ -243,8 +244,8 @@
             ${hasShare?`<span style="color:var(--success)">🔗 Shared (expires ${new Date(d.shareExpiry).toLocaleDateString('en-IN')})</span>`:''}
           </div>
           <div class="doc-actions">
-            <a href="${d.fileUrl}" target="_blank" class="btn btn-outline btn-sm">👁️ View</a>
-            <a href="${d.fileUrl}" download="${d.originalName||d.title}" class="btn btn-sm btn-dark">⬇️ Download</a>
+            <button type="button" onclick="SecureFiles.open('${d._id}')" class="btn btn-outline btn-sm">👁️ View</button>
+            <button type="button" onclick="SecureFiles.open('${d._id}',true)" class="btn btn-sm btn-dark">⬇️ Download</button>
             <button onclick="openShare('${d._id}','${(d.title||d.originalName).replace(/'/g,'')}')" class="btn btn-sm" style="background:rgba(201,168,76,0.12);color:var(--navy);border:none;cursor:pointer;border-radius:50px;padding:7px 13px;font-size:0.8rem;font-weight:600">🔗 Share</button>
             <button onclick="deleteDoc('${d._id}','${(d.title||d.originalName).replace(/'/g,'')}',this)" class="btn btn-sm" style="background:#fef2f2;color:var(--danger);border:none;cursor:pointer;border-radius:50px;padding:7px 13px;font-size:0.8rem;font-weight:600">🗑️</button>
           </div>

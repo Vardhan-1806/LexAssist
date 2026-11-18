@@ -10,13 +10,26 @@ const MongoStore  = require('connect-mongo');
 const path        = require('path');
 const rateLimit   = require('express-rate-limit');
 const fs          = require('fs');
+const { ensureUploadDirectories } = require('./Backend/utils/uploadStorage');
 
 const app = express();
 
 // ── Ensure directories exist ──────────────────────────────────
-['uploads','uploads/documents','uploads/temp'].forEach(d => {
-  if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive:true });
-});
+ensureUploadDirectories();
+
+if (process.env.NODE_ENV === 'production') {
+  const requiredSecrets = ['MONGO_URI', 'JWT_SECRET', 'SESSION_SECRET'];
+  const missingSecrets = requiredSecrets.filter(name => !process.env[name]);
+  const weakSecrets = ['JWT_SECRET', 'SESSION_SECRET'].filter(name => (process.env[name] || '').length < 32);
+  if (missingSecrets.length || weakSecrets.length) {
+    const details = [
+      missingSecrets.length ? `Missing: ${missingSecrets.join(', ')}` : '',
+      weakSecrets.length ? `Use at least 32 characters for: ${weakSecrets.join(', ')}` : '',
+    ].filter(Boolean).join('. ');
+    console.error(`❌ Production configuration error. ${details}`);
+    process.exit(1);
+  }
+}
 
 // ── Security Middleware ───────────────────────────────────────
 app.set('trust proxy', 1);
@@ -53,7 +66,7 @@ app.use(express.urlencoded({ extended:true, limit:'10mb' }));
 
 // ── Session ───────────────────────────────────────────────────
 app.use(session({
-  secret:            process.env.SESSION_SECRET || 'lexassist_secret_key_2024',
+  secret:            process.env.SESSION_SECRET || 'local-development-only-session-secret',
   resave:            false,
   saveUninitialized: false,
   store:             MongoStore.create({ mongoUrl: process.env.MONGO_URI }),
@@ -69,9 +82,7 @@ app.use(session({
 app.use(express.static(path.join(__dirname, 'Frontend/public'), {
   maxAge: process.env.NODE_ENV === 'production' ? '1d' : '0',
 }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-  maxAge: process.env.NODE_ENV === 'production' ? '7d' : '0',
-}));
+// Uploaded legal files are served only through ownership-checked document routes.
 
 // ── API Routes ────────────────────────────────────────────────
 app.get('/api/health', (req,res) => res.json({ status:'ok', timestamp:Date.now(), version:'1.0.0', uptime: process.uptime() }));
