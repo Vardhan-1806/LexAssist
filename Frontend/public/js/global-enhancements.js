@@ -3,12 +3,16 @@
  * Profile badge, floating chatbot, guide mode, legal terms, auto-summary
  */
 
+// Some public pages (for example, 404 and password recovery) load this file
+// without the authenticated app.js bundle. Treat authentication as optional.
+const getEnhancementUser = () => window.Auth?.user?.() || {};
+
 // ══════════════════════════════════════════════════════════════
 // 1. NAVBAR PROFILE BADGE (replaces separate profile icon)
 // ══════════════════════════════════════════════════════════════
 const ProfileBadge = {
   init: () => {
-    const user = Auth.user();
+    const user = getEnhancementUser();
     if (!user?.name) return;
 
     const el = document.getElementById('profileBadgeWrap');
@@ -67,7 +71,7 @@ const FloatChat = {
 
   getGreeting: () => {
     const path = window.location.pathname;
-    const name = Auth.user()?.name?.split(' ')[0] || 'there';
+    const name = getEnhancementUser()?.name?.split(' ')[0] || 'there';
     if (path.includes('/lawyers'))      return `Tell me your case type and I'll help you find the right lawyer.`;
     if (path.includes('/cases'))        return `Ask me about your case or I can find similar judgments for you.`;
     if (path.includes('/documents'))    return `I can explain any legal document you've uploaded.`;
@@ -440,6 +444,31 @@ document.addEventListener('DOMContentLoaded', () => {
   setTimeout(AutoSummary.apply, 500);
 });
 
+// Progressive scroll reveals across dashboards and public landing sections.
+// Content stays visible when motion is reduced or IntersectionObserver is absent.
+document.addEventListener('DOMContentLoaded', () => {
+  const revealTargets = document.querySelectorAll(
+    '.feature-card,.step,.role-card,.stat-card,.case-card,.lawyer-card,.quick-action,.feature-link,.page-header,.welcome-banner'
+  );
+  if (!revealTargets.length || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (!('IntersectionObserver' in window)) return;
+
+  document.body.classList.add('motion-ready');
+  revealTargets.forEach((element, index) => {
+    element.dataset.reveal = 'true';
+    element.style.setProperty('--reveal-delay', `${(index % 4) * 65}ms`);
+  });
+
+  const revealObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add('is-revealed');
+      observer.unobserve(entry.target);
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -28px 0px' });
+  revealTargets.forEach(element => revealObserver.observe(element));
+});
+
 // ══════════════════════════════════════════════════════════════
 // FIRST-TIME USER TOUR (booking a lawyer flow)
 // ══════════════════════════════════════════════════════════════
@@ -454,7 +483,7 @@ const Tour = {
   current: 0,
 
   shouldShow: () => {
-    const user = Auth.user();
+    const user = getEnhancementUser();
     if (!user?.name) return false;
     // Only show on citizen dashboard for first-timers
     if (!window.location.pathname.includes('/dashboard/citizen')) return false;
@@ -503,7 +532,7 @@ const Tour = {
   skip: () => Tour.done(),
 
   done: () => {
-    const user = Auth.user();
+    const user = getEnhancementUser();
     const key  = `lex_tour_done_${user.email || user._id}`;
     localStorage.setItem(key, '1');
     const overlay = document.getElementById('tourOverlay');

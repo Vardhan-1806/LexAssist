@@ -44,7 +44,7 @@
     <div class="hero-inner">
       <div>
         <div class="hero-eyebrow">A clearer way to navigate legal matters</div>
-        <h1>Legal clarity.<br><span>Within reach.</span></h1>
+        <h1 aria-label="Legal clarity. Within reach.">Legal clarity.<br><span class="hero-rotating-word"><span aria-hidden="true">Within reach.</span><span aria-hidden="true">Made clearer.</span><span aria-hidden="true">One step ahead.</span></span></h1>
         <p class="hero-desc">Understand legal information, follow your case progress, and connect with a legal professional through one thoughtful platform.</p>
         <div class="hero-cta">
           <a href="/chatbot" class="btn btn-primary btn-lg">Explore Lexi AI →</a>
@@ -242,6 +242,20 @@
       }
     });
     document.querySelectorAll('.navbar-links a').forEach(a => a.addEventListener('click', () => { document.querySelector('.navbar-links').style.display=''; document.getElementById('hamburger').setAttribute('aria-expanded','false'); }));
+
+    // Reveal landing sections as they enter view, without hiding content when motion is reduced.
+    const revealTargets = document.querySelectorAll('.feature-card,.step,.role-card');
+    if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.body.classList.add('motion-ready');
+      revealTargets.forEach((element,index) => {
+        element.dataset.reveal = 'true';
+        element.style.setProperty('--reveal-delay', `${(index % 3) * 70}ms`);
+      });
+      const revealObserver = new IntersectionObserver((entries,observer) => entries.forEach(entry => {
+        if (entry.isIntersecting) { entry.target.classList.add('is-revealed'); observer.unobserve(entry.target); }
+      }), { threshold:.12, rootMargin:'0px 0px -24px 0px' });
+      revealTargets.forEach(element => revealObserver.observe(element));
+    }
   </script>
 </body>
 </html>
