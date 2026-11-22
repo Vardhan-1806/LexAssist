@@ -3,7 +3,7 @@ const router  = express.Router();
 const { protect } = require('../middleware/auth');
 const {
   register, verifyOTP, resendOTP, login, adminLogin,
-  getMe, updateProfile, changePassword,
+  getMe, updateProfile, changePassword, logout,
   forgotPassword, resetPassword, validatePasswordStrength
 } = require('../controllers/authController');
 
@@ -12,6 +12,7 @@ router.post('/verify-otp',          verifyOTP);
 router.post('/resend-otp',          resendOTP);
 router.post('/login',               login);
 router.post('/admin-login',          adminLogin);
+router.post('/logout', logout);
 router.post('/forgot-password',     forgotPassword);
 router.put ('/reset-password',      resetPassword);
 router.post('/validate-password',   validatePasswordStrength);

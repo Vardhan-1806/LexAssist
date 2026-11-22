@@ -26,7 +26,7 @@
 
   <!-- Navbar -->
   <nav class="navbar">
-    <a href="/" class="navbar-brand">LEX<span>ASSIST</span></a>
+    <a href="/" class="navbar-brand"><span class="brand-mark" aria-hidden="true">L</span><span class="brand-wordmark">LEX<span>ASSIST</span></span></a>
     <ul class="navbar-links">
       <li><a href="#features">Features</a></li>
       <li><a href="#how-it-works">How It Works</a></li>
@@ -77,11 +77,11 @@
     </div>
     <div class="features-grid">
       <div class="feature-card"><div class="feature-icon">✳</div><h3>Legal information with Lexi</h3><p>Ask questions in plain language and review the answer and any source details returned by the assistant.</p></div>
-      <div class="feature-card"><div class="feature-icon">📋</div><h3>Case Status Simplified</h3><p>Complex court language translated into simple terms. Know your case number, status, next hearing date, and exactly what actions you need to take.</p></div>
+      <div class="feature-card"><div class="feature-icon">📋</div><h3>Case Status Simplified</h3><p>Keep case details and milestones you record in one place, with clear labels and next steps you can review.</p></div>
       <div class="feature-card"><div class="feature-icon">📈</div><h3>Case timeline</h3><p>Review the milestones recorded for your case and see recent updates in context.</p></div>
       <div class="feature-card"><div class="feature-icon">🎯</div><h3>Case priorities</h3><p>Review case status and priority information together so upcoming work is easier to spot.</p></div>
       <div class="feature-card"><div class="feature-icon">📅</div><h3>Integrated Legal Calendar</h3><p>Unified calendar showing hearing dates, appointments, deadlines, and reminders for both citizens and lawyers.</p></div>
-      <div class="feature-card"><div class="feature-icon">🔍</div><h3>Lawyer Discovery</h3><p>Find verified lawyers by specialization, city, experience, and ratings. View detailed profiles with real client reviews.</p></div>
+      <div class="feature-card"><div class="feature-icon">🔍</div><h3>Lawyer Discovery</h3><p>Browse verified lawyer profiles by practice area, location, experience, and listed consultation fee.</p></div>
       <div class="feature-card"><div class="feature-icon">📄</div><h3>Legal Document Generator</h3><p>Generate FIR drafts, bail applications, RTI applications, consumer complaints, and legal notices — download as PDF instantly.</p></div>
       <div class="feature-card"><div class="feature-icon">🔍</div><h3>Case research</h3><p>Explore the legal research tools available in the platform to find relevant case information.</p></div>
       <div class="feature-card"><div class="feature-icon">🆓</div><h3>Free Legal Aid Checker</h3><p>3-step eligibility checker to find out if you qualify for completely free legal help under NALSA.</p></div>
@@ -109,7 +109,7 @@
       <h2>Built for Everyone in the Legal System</h2>
       <p>Role-based dashboards tailored to citizens, lawyers, and administrators.</p>
     </div>
-    <div class="roles-grid" style="grid-template-columns:repeat(2,1fr);max-width:720px">
+    <div class="roles-grid">
       <div class="role-card">
         <div class="role-icon" style="background:rgba(13,27,53,0.07)">👨‍👩‍👧</div>
         <h3>For Citizens</h3>
@@ -147,7 +147,7 @@
           <li>Complaint and dispute resolution</li>
           <li>Knowledge base management for AI</li>
         </ul>
-        <a href="/login" class="btn btn-outline btn-full" style="margin-top:20px">Admin Login</a>
+        <a href="/admin/login" class="btn btn-outline btn-full" style="margin-top:20px">Admin Login</a>
       </div>
     </div>
   </section>
@@ -210,12 +210,12 @@
       const key = 'lexassist-intro-seen';
       const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       let alreadySeen = false;
-      try { alreadySeen = sessionStorage.getItem(key) === '1'; } catch (_) {}
+      try { alreadySeen = localStorage.getItem(key) === '1'; } catch (_) { try { alreadySeen = sessionStorage.getItem(key) === '1'; } catch (_) {} }
       const finishIntro = () => {
         intro.classList.remove('is-visible');
         intro.setAttribute('aria-hidden', 'true');
         window.setTimeout(() => { intro.hidden = true; document.body.classList.remove('intro-playing'); }, 300);
-        try { sessionStorage.setItem(key, '1'); } catch (_) {}
+        try { localStorage.setItem(key, '1'); } catch (_) { try { sessionStorage.setItem(key, '1'); } catch (_) {} }
       };
       if (!alreadySeen && !reducedMotion) {
         intro.hidden = false;
@@ -225,19 +225,23 @@
         const timer = window.setTimeout(finishIntro, 1900);
         skip.addEventListener('click', () => { window.clearTimeout(timer); finishIntro(); });
       } else {
-        try { sessionStorage.setItem(key, '1'); } catch (_) {}
+        try { localStorage.setItem(key, '1'); } catch (_) { try { sessionStorage.setItem(key, '1'); } catch (_) {} }
       }
     })();
     // Mobile navbar toggle
+    document.getElementById('hamburger').setAttribute('aria-expanded','false');
+    document.getElementById('hamburger').setAttribute('aria-label','Toggle navigation');
     document.getElementById('hamburger').addEventListener('click', () => {
       const links = document.querySelector('.navbar-links');
       if (links.style.display === 'flex') {
         links.style.display = '';
+        document.getElementById('hamburger').setAttribute('aria-expanded','false');
       } else {
         links.style.cssText = 'display:flex;flex-direction:column;position:fixed;top:64px;left:0;right:0;background:rgba(13,27,53,0.98);padding:20px;gap:16px;z-index:99';
+        document.getElementById('hamburger').setAttribute('aria-expanded','true');
       }
     });
-    document.querySelectorAll('.navbar-links a').forEach(a => a.addEventListener('click', () => { document.querySelector('.navbar-links').style.display=''; }));
+    document.querySelectorAll('.navbar-links a').forEach(a => a.addEventListener('click', () => { document.querySelector('.navbar-links').style.display=''; document.getElementById('hamburger').setAttribute('aria-expanded','false'); }));
   </script>
 </body>
 </html>

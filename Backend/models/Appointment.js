@@ -6,7 +6,7 @@ const appointmentSchema = new mongoose.Schema({
   case:        { type: mongoose.Schema.Types.ObjectId, ref: 'Case' },
   date:        { type: Date, required: true },
   timeSlot:    { start: String, end: String },
-  type:        { type: String, enum: ['Court Argument', 'Court Preparation'], default: 'Consultation' },
+  type:        { type: String, enum: ['Consultation','Court Argument','Court Preparation'], default: 'Consultation' },
   mode:        { type: String, enum: ['In-Person', 'Online', 'Phone'], default: 'In-Person' },
   status:      { type: String, enum: ['Pending', 'Confirmed', 'Cancelled', 'Completed', 'No-Show'], default: 'Pending' },
   notes:       String,

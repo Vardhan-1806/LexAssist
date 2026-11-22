@@ -59,6 +59,7 @@
           </label>
           <span class="doc-upload-hint">Max 5MB</span>
         </div>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin:6px 0 10px;font-size:.76rem;color:var(--muted)"><input id="docExternalConsent" type="checkbox" style="margin-top:3px"><span>Optional: allow the extracted document text to be processed by OpenAI when this service is configured. Leave unchecked to use the local explanation.</span></label>
         <div class="quick-qs" id="quickQs">
           <div class="quick-q" onclick="ask('How do I file an FIR?')">File FIR?</div>
           <div class="quick-q" onclick="ask('What is bail and how to apply?')">What is bail?</div>
@@ -72,6 +73,7 @@
           <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()" title="Speak your question">🎤</button>
           <button class="send-btn" onclick="sendMessage()">→</button>
         </div>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin:8px 0 0;font-size:.76rem;color:var(--muted)"><input id="chatExternalConsent" type="checkbox" style="margin-top:3px"><span>Optional: allow this question, relevant passages, and recent chat turns to be sent to OpenAI when configured. Leave unchecked for local retrieval only.</span></label>
         <div class="voice-status" id="voiceStatus"></div>
       </div>
     </div>
@@ -79,7 +81,7 @@
 
   <script src="/js/app.js"></script>
   <script>
-    Auth.guard();
+    Auth.guard(['citizen']);
     const user = Auth.user();
     let sessionId = null, isListening = false, recognition = null;
     const msgs = document.getElementById('chatMessages');
@@ -106,24 +108,28 @@
       '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
     })[char]);
 
-    const addMsg = (role, content, sources=[]) => {
+    const addMsg = (role, content, sources=[], evidence=[]) => {
       const wrap = document.createElement('div');
       wrap.className = `msg-wrap ${role}`;
       const avatar = escapeHtml(role==='ai' ? '🤖' : (user.name||'U')[0].toUpperCase());
       const safeContent = escapeHtml(content).replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');
-      wrap.innerHTML = `
-        <div class="msg-avatar ${role}">${avatar}</div>
-        <div>
-          <div class="msg-content ${role}">${safeContent}</div>
-          ${sources.length?`<div class="msg-sources">${sources.map(s=>`<span class="msg-src-tag">📄 ${escapeHtml(s)}</span>`).join('')}</div>`:''}
-        </div>`;
+      wrap.innerHTML = `<div class="msg-avatar ${role}" aria-hidden="true">${avatar}</div><div><div class="msg-content ${role}">${safeContent}</div></div>`;
+      const contentColumn=wrap.lastElementChild;
+      if(sources.length){const badges=document.createElement('div');badges.className='msg-sources';sources.forEach(source=>{const tag=document.createElement('span');tag.className='msg-src-tag';tag.textContent=`📄 ${source}`;badges.append(tag);});contentColumn.append(badges);}
+      if(evidence.length){
+        const details=document.createElement('details');details.className='rag-evidence';
+        const summary=document.createElement('summary');summary.textContent=`Review ${evidence.length} retrieved passage${evidence.length===1?'':'s'}`;details.append(summary);
+        evidence.forEach(item=>{const card=document.createElement('article');card.className='rag-evidence-card';const heading=document.createElement('strong');heading.textContent=item.source||'Legal source';const excerpt=document.createElement('p');excerpt.textContent=item.excerpt||'';card.append(heading,excerpt);details.append(card);});
+        contentColumn.append(details);
+      }
       msgs.appendChild(wrap);
       msgs.scrollTop = msgs.scrollHeight;
     };
 
     const showTyping = () => {
       const t=document.createElement('div'); t.className='msg-wrap ai'; t.id='typing';
-      t.innerHTML='<div class="msg-avatar ai">🤖</div><div class="typing"><span></span><span></span><span></span></div>';
+      t.setAttribute('role','status'); t.setAttribute('aria-live','polite');
+      t.innerHTML='<div class="msg-avatar ai" aria-hidden="true">🤖</div><div class="typing"><span></span><span></span><span></span><span class="sr-only">Reviewing relevant legal information…</span></div>';
       msgs.appendChild(t); msgs.scrollTop=msgs.scrollHeight;
     };
     const hideTyping = () => document.getElementById('typing')?.remove();
@@ -142,9 +148,10 @@
       addMsg('user', msg);
       showTyping();
       try {
-        const d = await (await fetch('/api/chatbot/message',{method:'POST',headers:Auth.headers(),body:JSON.stringify({message:msg,sessionId})})).json();
+        const externalAIConsent=document.getElementById('chatExternalConsent').checked;
+        const d = await (await fetch('/api/chatbot/message',{method:'POST',headers:Auth.headers(),body:JSON.stringify({message:msg,sessionId,externalAIConsent})})).json();
         hideTyping();
-        if (d.success) { sessionId=d.data.sessionId; addMsg('ai',d.data.answer,d.data.sources); loadHistory(); }
+        if (d.success) { sessionId=d.data.sessionId; addMsg('ai',d.data.answer,d.data.sources,d.data.evidence); loadHistory(); }
         else addMsg('ai','⚠️ Error. Please try again.');
       } catch(e) { hideTyping(); addMsg('ai','⚠️ Connection error.'); }
     };
@@ -162,10 +169,11 @@
       try {
         const form = new FormData();
         form.append('document', file);
-        const d = await (await fetch('/api/chatbot/analyze-doc',{method:'POST',headers:{'Authorization':`Bearer ${Auth.token()}`},body:form})).json();
+        form.append('externalAIConsent',document.getElementById('docExternalConsent').checked?'true':'false');
+        const d = await (await fetch('/api/chatbot/analyze-doc',{method:'POST',body:form,credentials:'same-origin'})).json();
         hideTyping();
         document.getElementById('docAnalyzing').classList.remove('show');
-        addMsg('ai', d.success ? d.data.answer : '⚠️ Could not analyze: '+d.message, d.success?['Document Analysis']:[]);
+        addMsg('ai', d.success ? d.data.answer : '⚠️ Could not analyze: '+d.message, d.success?['Document Analysis']:[],d.success?d.data.evidence||[]:[]);
       } catch(e) { hideTyping(); document.getElementById('docAnalyzing').classList.remove('show'); addMsg('ai','⚠️ Upload failed.'); }
       input.value='';
     };
@@ -201,7 +209,7 @@
         const s = d.data?.find(h=>h.session===sid);
         if (!s) return;
         msgs.innerHTML='';
-        s.messages.forEach(m=>addMsg(m.role==='user'?'user':'ai',m.content,m.sources||[]));
+        s.messages.forEach(m=>addMsg(m.role==='user'?'user':'ai',m.content,m.sources||[],m.evidence||[]));
       } catch(e) {}
     };
 

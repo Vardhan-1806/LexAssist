@@ -8,32 +8,26 @@ const Case  = require('../models/Case');
 const User  = require('../models/User');
 const { Notification } = require('../models/Extras');
 const { sendHearingReminder } = require('./emailService');
+const { indiaDayRange } = require('./appointmentSlots');
 
 const startReminders = () => {
   // Run every day at 8:00 AM
   cron.schedule('0 8 * * *', async () => {
     console.log('⏰ Running hearing reminder job...');
     try {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(0,0,0,0);
-      const dayAfter = new Date(tomorrow);
-      dayAfter.setDate(dayAfter.getDate() + 1);
-
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      const todayEnd = new Date(today);
-      todayEnd.setHours(23,59,59,999);
+      const now=new Date();
+      const indiaToday=new Date(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(now)+'T00:00:00+05:30');
+      const tomorrow=new Date(indiaToday.getTime()+24*60*60*1000);
 
       // Cases with hearing tomorrow
       const tomorrowCases = await Case.find({
-        nextHearingDate: { $gte: tomorrow, $lt: dayAfter },
+        nextHearingDate: indiaDayRange(tomorrow),
         status: { $in: ['Active','Pending'] }
       }).populate('citizen', 'name email').populate('lawyer', 'name email');
 
       // Cases with hearing today
       const todayCases = await Case.find({
-        nextHearingDate: { $gte: today, $lte: todayEnd },
+        nextHearingDate: indiaDayRange(indiaToday),
         status: { $in: ['Active','Pending'] }
       }).populate('citizen', 'name email').populate('lawyer', 'name email');
 
@@ -41,7 +35,7 @@ const startReminders = () => {
         for (const c of cases) {
           // Notify citizen
           if (c.citizen?.email) {
-            await sendHearingReminder(c.citizen, c, daysLeft).catch(console.error);
+            await sendHearingReminder(c.citizen.email,c.citizen.name,c.caseNumber,c.title,c.court,daysLeft).catch(console.error);
             await Notification.create({
               user:    c.citizen._id,
               title:   `⏰ ${daysLeft===0?'Today':'Tomorrow'}: Hearing for ${c.caseNumber}`,
@@ -52,7 +46,7 @@ const startReminders = () => {
           }
           // Notify lawyer
           if (c.lawyer?.email) {
-            await sendHearingReminder(c.lawyer, c, daysLeft).catch(console.error);
+            await sendHearingReminder(c.lawyer.email,c.lawyer.name,c.caseNumber,c.title,c.court,daysLeft).catch(console.error);
             await Notification.create({
               user:    c.lawyer._id,
               title:   `⏰ ${daysLeft===0?'Today':'Tomorrow'}: Hearing for ${c.caseNumber}`,
@@ -71,7 +65,7 @@ const startReminders = () => {
     } catch(err) {
       console.error('Reminder cron error:', err.message);
     }
-  });
+  },{timezone:'Asia/Kolkata'});
 
   console.log('✅ Reminder cron job scheduled (daily 8 AM)');
 };

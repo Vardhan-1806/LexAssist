@@ -12,6 +12,7 @@ router.put('/users/:id/toggle',        ctrl.toggleUserActive);
 router.delete('/users/:id',            ctrl.deleteUser);
 router.get('/lawyers',                 ctrl.getAllLawyers);
 router.get('/lawyers/pending',         ctrl.getPendingLawyers);
+router.get('/lawyers/:id/credentials/:credentialId',ctrl.getLawyerCredential);
 router.get('/lawyers/:id',             ctrl.getLawyerDetails);
 router.put('/lawyers/:id/verify',      ctrl.verifyLawyer);
 router.put('/lawyers/:id/reject',      ctrl.rejectLawyer);

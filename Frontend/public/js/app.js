@@ -5,18 +5,26 @@
 
 // ── Auth ──────────────────────────────────────────────────────
 const Auth = {
-  token:   () => localStorage.getItem('token'),
-  user:    () => JSON.parse(localStorage.getItem('user') || '{}'),
-  headers: () => ({ 'Authorization': `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' }),
-  logout:  () => { localStorage.clear(); window.location.href = '/login'; },
+  token:   () => null,
+  user:    () => { try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch (_) { return {}; } },
+  headers: () => ({ 'Content-Type': 'application/json' }),
+  logout:  async () => {
+    try { await fetch('/api/auth/logout', { method:'POST', headers:{ 'Content-Type':'application/json' }, credentials:'same-origin' }); } catch (_) {}
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+  },
   guard:   (roles = []) => {
-    const t = localStorage.getItem('token');
-    const u = JSON.parse(localStorage.getItem('user') || '{}');
-    if (!t) { window.location.href = '/login'; return false; }
+    const u = Auth.user();
+    if (!u.role) { window.location.href = '/login'; return false; }
     if (roles.length && !roles.includes(u.role)) {
       window.location.href = u.role === 'admin' ? '/dashboard/admin' : u.role === 'lawyer' ? '/dashboard/lawyer' : '/dashboard/citizen';
       return false;
     }
+    fetch('/api/auth/me', { credentials:'same-origin' }).then(async response => {
+      if (response.status===401 || response.status===403) { Auth.logout(); return null; }
+      if (!response.ok) return null;
+      return response.json();
+    }).then(result => { if (result?.success) localStorage.setItem('user', JSON.stringify(result.data)); }).catch(() => {});
     return true;
   }
 };
@@ -29,7 +37,7 @@ const API = {
   delete: async (url)       => (await fetch(url, { method:'DELETE', headers: Auth.headers() })).json(),
 };
 
-// Private document downloads require the signed-in user's bearer token.
+// Private document downloads use the signed, HttpOnly same-site session cookie.
 const SecureFiles = {
   open: async (documentId, download = false) => {
     const previewWindow = download ? null : window.open('about:blank', '_blank');
@@ -37,7 +45,7 @@ const SecureFiles = {
     try {
       const query = download ? '?download=1' : '';
       const response = await fetch(`/api/documents/${encodeURIComponent(documentId)}/file${query}`, {
-        headers: { 'Authorization': `Bearer ${Auth.token()}` },
+        credentials: 'same-origin',
       });
       if (!response.ok) throw new Error('Could not access this document. Check your sign-in and sharing access.');
       const file = await response.blob();
@@ -73,8 +81,11 @@ const Toast = {
     const icons  = { success:'✅', danger:'❌', warning:'⚠️', info:'ℹ️' };
     const t = document.createElement('div');
     t.style.cssText = `background:white;border-left:4px solid ${colors[type]};border-radius:10px;padding:12px 16px;box-shadow:0 8px 24px rgba(0,0,0,0.14);display:flex;align-items:center;gap:9px;font-family:'DM Sans',sans-serif;font-size:0.875rem;font-weight:500;cursor:pointer;pointer-events:all;animation:slideIn 0.25s ease`;
-    t.innerHTML = `<span>${icons[type]}</span><span style="flex:1;color:#1a1a2e">${msg}</span><span style="color:#94a3b8" onclick="this.parentElement.remove()">✕</span>`;
-    t.onclick = () => t.remove();
+    const icon=document.createElement('span'); icon.textContent=icons[type]||icons.info;
+    const body=document.createElement('span'); body.style.cssText='flex:1;color:#1a1a2e'; body.textContent=String(msg??'');
+    const close=document.createElement('button'); close.type='button'; close.setAttribute('aria-label','Dismiss notification'); close.textContent='×'; close.style.cssText='border:0;background:transparent;color:#64748b;font-size:1.1rem;cursor:pointer';
+    close.addEventListener('click',event=>{event.stopPropagation();t.remove();}); t.append(icon,body,close);
+    t.addEventListener('click', () => t.remove());
     if (!document.getElementById('toastKeyframes')) {
       const s = document.createElement('style');
       s.id = 'toastKeyframes';
@@ -190,10 +201,13 @@ const initTooltips = () => {
     if (!pat.test(node.textContent)) return;
     pat.lastIndex = 0;
     const span = document.createElement('span');
-    span.innerHTML = node.textContent.replace(pat, m => {
-      const k = m.toLowerCase();
-      return LEGAL_TERMS[k] ? `<span class="legal-term" data-term="${k}">${m}</span>` : m;
-    });
+    const content=node.textContent; let cursor=0, match;
+    while ((match=pat.exec(content))) {
+      span.append(document.createTextNode(content.slice(cursor,match.index)));
+      const term=document.createElement('span'); term.className='legal-term'; term.dataset.term=match[0].toLowerCase(); term.textContent=match[0]; span.append(term);
+      cursor=match.index+match[0].length;
+    }
+    span.append(document.createTextNode(content.slice(cursor)));
     node.parentNode.replaceChild(span, node);
   });
 
@@ -226,6 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initSidebar();
   initModals();
   NotifPanel.init();
+  initGlobalControls();
 });
 
 window.addEventListener('load', () => setTimeout(initTooltips, 400));
@@ -293,13 +308,15 @@ const NotifPanel = {
       const unread = d.unread || 0;
       const cnt = document.getElementById('notifCount');
       if (cnt) { cnt.textContent = unread; cnt.classList.toggle('show', unread > 0); }
-      if (!d.data?.length) { el.innerHTML='<p style="padding:16px;text-align:center;color:var(--muted);font-size:0.84rem">No notifications</p>'; return; }
-      el.innerHTML = d.data.slice(0,8).map(n=>`
-        <div style="padding:10px 14px;cursor:pointer;background:${n.isRead?'transparent':'rgba(201,168,76,0.07)'};transition:background 0.2s" onclick="NotifPanel.markRead('${n._id}',this)" onmouseover="this.style.background='var(--ivory)'" onmouseout="this.style.background='${n.isRead?'transparent':'rgba(201,168,76,0.07)'}'">
-          <div style="font-weight:${n.isRead?400:600};font-size:0.84rem;color:var(--navy);line-height:1.4">${n.title}</div>
-          <div style="font-size:0.76rem;color:var(--muted);margin-top:3px">${(n.message||'').slice(0,70)}${(n.message||'').length>70?'...':''}</div>
-          <div style="font-size:0.68rem;color:var(--muted);margin-top:2px">${DateUtils.timeAgo(n.createdAt)}</div>
-        </div>`).join('');
+      if (!d.data?.length) { const empty=document.createElement('p'); empty.textContent='No notifications'; empty.style.cssText='padding:16px;text-align:center;color:var(--muted);font-size:.84rem'; el.replaceChildren(empty); return; }
+      el.replaceChildren();
+      d.data.slice(0,8).forEach(n=>{
+        const item=document.createElement('button'); item.type='button'; item.className='notification-item'; item.style.background=n.isRead?'transparent':'rgba(201,168,76,0.07)';
+        const title=document.createElement('span'); title.className='notification-title'; title.textContent=n.title||'Notification';
+        const message=document.createElement('span'); message.className='notification-message'; const body=String(n.message||''); message.textContent=body.slice(0,70)+(body.length>70?'…':'');
+        const time=document.createElement('span'); time.className='notification-time'; time.textContent=DateUtils.timeAgo(n.createdAt);
+        item.append(title,message,time); item.addEventListener('click',()=>NotifPanel.markRead(n._id,item)); el.append(item);
+      });
     } catch(e){}
   },
 
@@ -344,3 +361,47 @@ const NotifPanel = {
 };
 
 window.NotifPanel = NotifPanel;
+
+const Loaders = {
+  show(target, {variant='document', message='Preparing your legal workspace…'}={}) {
+    const host=typeof target==='string'?document.querySelector(target):target;
+    if(!host)return null;
+    const status=document.createElement('div'); status.className=`la-loader la-loader-${variant}`; status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
+    const graphic=document.createElement('span'); graphic.className='la-loader-graphic'; graphic.setAttribute('aria-hidden','true');
+    const label=document.createElement('span'); label.className='la-loader-message'; label.textContent=message;
+    status.append(graphic,label); host.replaceChildren(status); return status;
+  },
+  hide(target) { const host=typeof target==='string'?document.querySelector(target):target; host?.querySelector('.la-loader')?.remove(); }
+};
+window.Loaders=Loaders;
+
+const CommandMenu = {
+  open() {
+    let dialog=document.getElementById('commandMenu');
+    if(!dialog){
+      dialog=document.createElement('div'); dialog.id='commandMenu'; dialog.className='command-backdrop';
+      dialog.innerHTML='<section class="command-dialog" role="dialog" aria-modal="true" aria-labelledby="commandTitle"><h2 id="commandTitle">Quick actions</h2><input class="form-control" id="commandSearch" type="search" placeholder="Search actions…" aria-label="Search quick actions"><div class="command-results" id="commandResults"></div><p class="command-hint">Use ↑ ↓ to move · Enter to open · Esc to close</p></section>';
+      dialog.addEventListener('click',event=>{if(event.target===dialog)CommandMenu.close();}); dialog.addEventListener('keydown',CommandMenu.keys); document.body.append(dialog);
+      dialog.querySelector('#commandSearch').addEventListener('input',CommandMenu.filter);
+    }
+    const actions={
+      citizen:[['Ask Lexi','/chatbot'],['Find a lawyer','/lawyers'],['View cases','/cases'],['Book appointment','/lawyers'],['Open messages','/messages']],
+      lawyer:[['View client cases','/cases'],['Manage appointments','/appointments'],['Open messages','/messages'],['Manage calendar','/calendar'],['Open documents','/lawyer/documents']],
+      admin:[['Review lawyer verification','/dashboard/admin'],['Manage users','/dashboard/admin'],['Open knowledge base','/dashboard/admin'],['View reports','/dashboard/admin']],
+    }[Auth.user().role]||[];
+    const results=dialog.querySelector('#commandResults'); results.replaceChildren();
+    actions.forEach(([label,href])=>{const button=document.createElement('a');button.className='command-option';button.href=href;button.textContent=label;results.append(button);});
+    dialog.classList.add('is-open');const search=dialog.querySelector('#commandSearch');search.value='';search.focus();CommandMenu.filter();
+  },
+  close(){document.getElementById('commandMenu')?.classList.remove('is-open');document.querySelector('[data-command-open]')?.focus();},
+  filter(){const query=document.getElementById('commandSearch')?.value.toLowerCase()||'';document.querySelectorAll('.command-option').forEach(item=>item.hidden=!item.textContent.toLowerCase().includes(query));},
+  keys(event){const items=[...document.querySelectorAll('.command-option:not([hidden])')],current=items.indexOf(document.activeElement);if(event.key==='Escape'){event.preventDefault();CommandMenu.close();}else if(event.key==='ArrowDown'){event.preventDefault();items[(current+1+items.length)%items.length]?.focus();}else if(event.key==='ArrowUp'){event.preventDefault();items[(current-1+items.length)%items.length]?.focus();}}
+};
+window.CommandMenu=CommandMenu;
+window.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();CommandMenu.open();}});
+
+function initGlobalControls(){
+  const actions=document.querySelector('.navbar-actions'); if(!actions)return;
+  if(!actions.querySelector('.theme-toggle')){const theme=document.createElement('button');theme.type='button';theme.className='theme-toggle btn btn-outline btn-sm';theme.setAttribute('aria-label','Toggle light or dark theme');theme.textContent='◐';theme.addEventListener('click',ThemeManager.toggle);actions.prepend(theme);}
+  if(!actions.querySelector('[data-command-open]')){const trigger=document.createElement('button');trigger.type='button';trigger.className='command-trigger btn btn-outline btn-sm';trigger.dataset.commandOpen='';trigger.setAttribute('aria-label','Open quick actions (Control K)');trigger.innerHTML='<span aria-hidden="true">⌕</span><span>Quick actions</span><kbd>Ctrl K</kbd>';trigger.addEventListener('click',()=>CommandMenu.open());actions.prepend(trigger);}
+}

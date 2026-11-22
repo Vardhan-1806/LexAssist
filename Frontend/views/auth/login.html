@@ -57,16 +57,18 @@
     <div style="text-align:center;margin:18px 0">
       <div style="font-size:3rem;margin-bottom:10px">📧</div>
       <h2 class="auth-title">Verify Your Email</h2>
-      <p class="auth-subtitle">Enter the 4-digit code sent to<br><strong id="otpEmail" style="color:var(--navy)"></strong></p>
+      <p class="auth-subtitle">Enter the 6-digit code sent to<br><strong id="otpEmail" style="color:var(--navy)"></strong></p>
     </div>
 
     <div id="otpMsg" class="alert"></div>
 
     <div class="otp-wrap">
-      <input type="text" maxlength="1" inputmode="numeric" id="oo0" oninput="omv(this,0)" onkeydown="obk(event,0)">
-      <input type="text" maxlength="1" inputmode="numeric" id="oo1" oninput="omv(this,1)" onkeydown="obk(event,1)">
-      <input type="text" maxlength="1" inputmode="numeric" id="oo2" oninput="omv(this,2)" onkeydown="obk(event,2)">
-      <input type="text" maxlength="1" inputmode="numeric" id="oo3" oninput="omv(this,3)" onkeydown="obk(event,3)">
+      <input type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code" aria-label="Verification code digit 1" id="oo0" onpaste="pasteLoginOTP(event)" oninput="omv(this,0)" onkeydown="obk(event,0)">
+      <input type="text" maxlength="1" inputmode="numeric" aria-label="Verification code digit 2" id="oo1" onpaste="pasteLoginOTP(event)" oninput="omv(this,1)" onkeydown="obk(event,1)">
+      <input type="text" maxlength="1" inputmode="numeric" aria-label="Verification code digit 3" id="oo2" onpaste="pasteLoginOTP(event)" oninput="omv(this,2)" onkeydown="obk(event,2)">
+      <input type="text" maxlength="1" inputmode="numeric" aria-label="Verification code digit 4" id="oo3" onpaste="pasteLoginOTP(event)" oninput="omv(this,3)" onkeydown="obk(event,3)">
+      <input type="text" maxlength="1" inputmode="numeric" aria-label="Verification code digit 5" id="oo4" onpaste="pasteLoginOTP(event)" oninput="omv(this,4)" onkeydown="obk(event,4)">
+      <input type="text" maxlength="1" inputmode="numeric" aria-label="Verification code digit 6" id="oo5" onpaste="pasteLoginOTP(event)" oninput="omv(this,5)" onkeydown="obk(event,5)">
     </div>
 
     <button onclick="verifyLoginOTP()" id="otpBtn" class="btn btn-primary btn-full btn-lg">Verify & Login →</button>
@@ -103,7 +105,7 @@
     function showMsg(txt, type='danger', id='msg') {
       const el = document.getElementById(id);
       el.className = `alert alert-${type} show`;
-      el.innerHTML = txt;
+      el.textContent = txt;
       el.scrollIntoView({behavior:'smooth',block:'nearest'});
     }
 
@@ -138,16 +140,16 @@
 
         if (!d.success) {
           if (d.pendingVerification) {
-            showMsg(`⏳ <strong>Your lawyer profile is pending admin verification.</strong><br><br>You will receive an email at <strong>${email}</strong> once your Bar Council ID and credentials are approved by our admin team.<br><br>This usually takes 24-48 hours.`, 'warning');
+            showMsg(`⏳ Your lawyer profile is pending admin verification.\n\nYou will receive an email at ${email} once your Bar Council ID and credentials are approved.\n\nThis usually takes 24-48 hours.`, 'warning');
           } else if (d.rejected) {
-            showMsg(`❌ <strong>Profile Not Approved</strong><br>${d.message}`, 'danger');
+            showMsg(`❌ Profile Not Approved\n${d.message}`, 'danger');
           } else if (d.requiresOTP) {
             // Show OTP box
             pendingEmail = d.email || email;
             document.getElementById('loginBox').style.display = 'none';
             document.getElementById('otpBox').style.display   = 'block';
             document.getElementById('otpEmail').textContent   = pendingEmail;
-            showMsg('📧 A verification code has been sent to your email.', 'info', 'otpMsg');
+            showMsg(`📧 A verification code has been sent to your email.${d.devOTP?` Development code: ${d.devOTP}`:''}`, 'info', 'otpMsg');
           } else {
             showMsg(d.message || 'Invalid email or password');
           }
@@ -173,7 +175,6 @@
     }
 
     function handleLoginSuccess(d) {
-      localStorage.setItem('token', d.token);
       localStorage.setItem('user',  JSON.stringify(d.data));
       showMsg('✅ Login successful! Redirecting...','success');
       const role = d.data?.role || 'citizen';
@@ -187,17 +188,25 @@
     function omv(el, idx) {
       el.value = el.value.replace(/\D/g,'');
       el.classList.toggle('filled', el.value!=='');
-      if (el.value && idx < 3) document.getElementById('oo'+(idx+1)).focus();
-      if (idx===3 && el.value) verifyLoginOTP();
+      if (el.value && idx < 5) document.getElementById('oo'+(idx+1)).focus();
+      if (idx===5 && el.value) verifyLoginOTP();
     }
     function obk(e,idx) {
       if (e.key==='Backspace' && !e.target.value && idx>0)
         document.getElementById('oo'+(idx-1)).focus();
     }
+    function pasteLoginOTP(e) {
+      const digits = (e.clipboardData.getData('text') || '').replace(/\D/g,'').slice(0,6);
+      if (!digits) return;
+      e.preventDefault();
+      [...digits].forEach((digit,index) => { document.getElementById('oo'+index).value=digit; });
+      document.getElementById('oo'+Math.min(digits.length,5)).focus();
+      if (digits.length===6) verifyLoginOTP();
+    }
 
     async function verifyLoginOTP() {
-      const otp = [0,1,2,3].map(i=>document.getElementById('oo'+i).value).join('');
-      if (otp.length!==4) { showMsg('Enter all 4 digits','warning','otpMsg'); return; }
+      const otp = [0,1,2,3,4,5].map(i=>document.getElementById('oo'+i).value).join('');
+      if (otp.length!==6) { showMsg('Enter all 6 digits','warning','otpMsg'); return; }
 
       const btn = document.getElementById('otpBtn');
       btn.innerHTML='<span class="loader"></span> Verifying...'; btn.disabled=true;
@@ -228,8 +237,8 @@
           body:JSON.stringify({email:pendingEmail})
         });
         const d = await r.json();
-        showMsg(d.success?'✅ New code sent! Check inbox.':d.message, d.success?'success':'danger','otpMsg');
-        [0,1,2,3].forEach(i=>{const el=document.getElementById('oo'+i);el.value='';el.classList.remove('filled');});
+        showMsg(d.success?`✅ New code sent! Check inbox.${d.devOTP?` Development code: ${d.devOTP}`:''}`:d.message, d.success?'success':'danger','otpMsg');
+        [0,1,2,3,4,5].forEach(i=>{const el=document.getElementById('oo'+i);el.value='';el.classList.remove('filled');});
         document.getElementById('oo0').focus();
       } catch(e) { showMsg('Error resending code.','danger','otpMsg'); }
     }

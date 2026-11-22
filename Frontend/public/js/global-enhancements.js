@@ -139,7 +139,7 @@ const FloatChat = {
     try {
       const r = await fetch('/api/chatbot/message', {
         method: 'POST',
-        headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${Auth.token()}` },
+        headers: { 'Content-Type':'application/json' }, credentials:'same-origin',
         body: JSON.stringify({ message, sessionId: FloatChat.sessionId })
       });
       const d = await r.json();
@@ -174,7 +174,7 @@ const GuideMode = {
     '.calendar':             'Your personal calendar — red dates are court hearings, gold are appointments.',
     '.doc-card':             'Legal document you uploaded — share with your lawyer using a secure link.',
     '.priority-score':       'AI-calculated urgency score (0-100) based on hearing proximity and case risk.',
-    '.otp-box, .otp-wrap':   'Enter the 4-digit code sent to your email to verify your account.',
+    '.otp-box, .otp-wrap':   'Enter the 6-digit code sent to your email to verify your account.',
   },
 
   init: () => {

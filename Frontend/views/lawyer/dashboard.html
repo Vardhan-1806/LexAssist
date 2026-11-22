@@ -37,6 +37,7 @@
         <a href="/dashboard/lawyer" class="sidebar-link active"><span class="icon">🏠</span>Dashboard</a>
         <a href="/cases"            class="sidebar-link"><span class="icon">📋</span>Client Cases</a>
         <a href="/appointments"     class="sidebar-link"><span class="icon">📅</span>Appointments</a>
+        <a href="/messages"         class="sidebar-link"><span class="icon">✉️</span>Messages</a>
         <a href="/calendar"         class="sidebar-link"><span class="icon">🗓️</span>Calendar</a>
         <a href="/lawyer/documents" class="sidebar-link"><span class="icon">📂</span>Documents</a>
         <div class="sidebar-section">Research</div>
@@ -64,6 +65,18 @@
         <div class="stat-card"><div class="stat-icon green">📅</div><div><div class="stat-value" id="sAppts">—</div><div class="stat-label">Appointments</div></div></div>
       </div>
 
+      <section class="card mb-16" aria-labelledby="availabilityTitle">
+        <div class="flex-between mb-12"><div><h4 id="availabilityTitle">Consultation availability</h4><p class="text-muted">Publish the hours citizens can book. Times use India Standard Time.</p></div><button class="btn btn-outline btn-sm" id="saveAvailability" type="button">Save hours</button></div>
+        <div id="availabilityEditor" class="availability-editor"><div class="text-muted">Loading your published hours…</div></div>
+      </section>
+
+      <section class="card mb-16" id="verificationCard" aria-labelledby="verificationTitle" hidden>
+        <div class="flex-between mb-12"><div><h4 id="verificationTitle">Professional verification</h4><p id="verificationStatus" class="text-muted" aria-live="polite">Checking verification status…</p></div><span id="verificationBadge" class="pill pill-pending">Pending</span></div>
+        <p id="verificationReason" class="text-muted" hidden></p>
+        <div id="credentialList" class="text-muted mb-12"></div>
+        <form id="credentialForm"><label for="credentialFile">Add Bar Council proof (PDF, JPG or PNG; up to 5 MB)</label><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px"><input id="credentialFile" name="credential" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" required><button class="btn btn-primary btn-sm" type="submit">Submit for review</button></div></form>
+      </section>
+
       <div class="grid-2">
         <div class="card">
           <div class="flex-between mb-12">
@@ -86,10 +99,43 @@
   <script src="/js/app.js"></script>
   <script src="/js/global-enhancements.js"></script>
   <script>
-    Auth.guard(['lawyer','admin']);
+    Auth.guard(['lawyer']);
     const user = Auth.user();
+    const escapeHTML=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const h = new Date().getHours();
     document.getElementById('lawyerWelcome').textContent = `Good ${h<12?'morning':h<17?'afternoon':'evening'}, ${user.name?.split(' ')[0]||''}!`;
+
+    const weekdays=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    let lawyerProfile=null;
+    const loadVerification=async()=>{
+      const result=await API.get('/api/lawyers/profile');if(!result.success)return;
+      lawyerProfile=result.data;const card=document.getElementById('verificationCard');card.hidden=!!lawyerProfile.isVerified;
+      if(lawyerProfile.isVerified)return;
+      const rejected=!!lawyerProfile.isRejected,badge=document.getElementById('verificationBadge');badge.className=`pill ${rejected?'pill-bad':'pill-pending'}`;badge.textContent=rejected?'Action required':'Pending review';
+      document.getElementById('verificationStatus').textContent=rejected?'Your profile needs updated credential proof before it can be reviewed again.':'Submit Bar Council proof so an administrator can review your professional profile.';
+      const reason=document.getElementById('verificationReason');reason.hidden=!lawyerProfile.rejectReason;reason.textContent=lawyerProfile.rejectReason?`Admin feedback: ${lawyerProfile.rejectReason}`:'';
+      document.getElementById('credentialList').textContent=(lawyerProfile.credentialDocuments||[]).map(doc=>`${doc.originalName} — submitted ${new Date(doc.uploadedAt).toLocaleDateString('en-IN')}`).join(' · ')||'No proof submitted yet.';
+    };
+    document.getElementById('credentialForm').addEventListener('submit',async event=>{
+      event.preventDefault();const form=event.currentTarget,file=document.getElementById('credentialFile').files[0],button=form.querySelector('button[type=submit]');
+      if(!file)return;if(file.size>5*1024*1024){Toast.show('Choose a file smaller than 5 MB.','warning');return;}
+      button.disabled=true;const body=new FormData(form);const result=await fetch('/api/lawyers/credentials',{method:'POST',body,credentials:'same-origin'}).then(response=>response.json()).catch(()=>({success:false,message:'Could not submit the document.'}));
+      button.disabled=false;Toast.show(result.message||'Credential submission complete.',result.success?'success':'danger');if(result.success){form.reset();await loadVerification();}
+    });
+    const loadAvailability=async()=>{
+      const root=document.getElementById('availabilityEditor');
+      const result=await API.get('/api/lawyers/profile');
+      if(!result.success){root.textContent=result.message||'Availability is unavailable.';return;}
+      const saved=result.data.availability||[];
+      root.innerHTML=weekdays.map(day=>{const slot=saved.find(item=>item.day===day);return `<label class="availability-row"><input type="checkbox" data-day="${day}" ${slot?.isAvailable?'checked':''}><span>${day}</span><input aria-label="${day} start time" type="time" value="${escapeHTML(slot?.startTime||'09:00')}" ${slot?.isAvailable?'':'disabled'}><span>to</span><input aria-label="${day} end time" type="time" value="${escapeHTML(slot?.endTime||'17:00')}" ${slot?.isAvailable?'':'disabled'}></label>`}).join('');
+      root.querySelectorAll('input[type=checkbox]').forEach(check=>check.addEventListener('change',()=>check.parentElement.querySelectorAll('input[type=time]').forEach(input=>input.disabled=!check.checked)));
+    };
+    document.getElementById('saveAvailability').addEventListener('click',async event=>{
+      const availability=[...document.querySelectorAll('.availability-row')].filter(row=>row.querySelector('[type=checkbox]').checked).map(row=>({day:row.querySelector('[type=checkbox]').dataset.day,startTime:row.querySelectorAll('[type=time]')[0].value,endTime:row.querySelectorAll('[type=time]')[1].value,isAvailable:true}));
+      const button=event.currentTarget;button.disabled=true;
+      const result=await API.put('/api/lawyers/profile',{availability});
+      button.disabled=false;Toast.show(result.success?'Availability saved.':result.message||'Could not save availability.',result.success?'success':'danger');
+    });
 
     const loadStats = async () => {
       try {
@@ -110,7 +156,7 @@
         if (!d.data?.length) { ul.innerHTML='<div class="text-muted" style="padding:14px;text-align:center">No upcoming appointments</div>'; return; }
         ul.innerHTML = d.data.map(a=>`
           <div style="padding:9px 0;border-bottom:1px solid var(--ivory-dark);font-size:0.84rem">
-            <div style="font-weight:600;color:var(--navy)">${a.citizen?.name||'Client'}</div>
+            <div style="font-weight:600;color:var(--navy)">${escapeHTML(a.citizen?.name||'Client')}</div>
             <div style="color:var(--muted);font-size:0.76rem">${new Date(a.date).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})} · ${a.timeSlot?.start} · ${a.type}</div>
           </div>`).join('');
       } catch(e){}
@@ -128,10 +174,10 @@
         el.innerHTML = d.data.map(c=>`
           <div style="padding:9px 0;border-bottom:1px solid var(--ivory-dark)">
             <div style="display:flex;justify-content:space-between;align-items:center">
-              <div style="font-weight:600;font-size:0.875rem;color:var(--navy);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.title}</div>
+            <div style="font-weight:600;font-size:0.875rem;color:var(--navy);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHTML(c.title)}</div>
               <span class="badge badge-${(c.priority||'medium').toLowerCase()}" style="margin-left:8px;flex-shrink:0">${c.priority}</span>
             </div>
-            <div style="font-size:0.74rem;color:var(--muted);margin-top:2px">${c.caseNumber} · ${c.citizen?.name||'Client'}${c.nextHearingDate?` · Hearing: ${new Date(c.nextHearingDate).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}`:''}</div>
+            <div style="font-size:0.74rem;color:var(--muted);margin-top:2px">${escapeHTML(c.caseNumber)} · ${escapeHTML(c.citizen?.name||'Client')}${c.nextHearingDate?` · Hearing: ${new Date(c.nextHearingDate).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}`:''}</div>
           </div>`).join('');
       } catch(e){}
     };
@@ -139,6 +185,8 @@
     loadStats();
     loadPriority();
     loadAppointments();
+    loadAvailability();
+    loadVerification();
     NotifPanel.init();
     setInterval(NotifPanel.poll, 20000);
   </script>

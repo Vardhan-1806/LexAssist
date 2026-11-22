@@ -99,31 +99,35 @@ LEXASSIST/
 ## ⚡ Quick Start
 
 ### 1. Prerequisites
-- Node.js v18+
+- Node.js 20 or newer
 - MongoDB (local or Atlas)
-- (Optional) OpenAI API key for full AI features
+- SMTP credentials for account verification and password reset emails
+- (Optional) OpenAI API key for generated answers; local retrieval remains available without it
 
 ### 2. Install Dependencies
 ```bash
-npm install
+npm ci
 ```
 
 ### 3. Configure Environment
-Edit `.env` with your values:
-```env
-MONGO_URI=mongodb://localhost:27017/lexassist
-JWT_SECRET=your_secret_key
-OPENAI_API_KEY=your_openai_key   # Optional – fallback works without it
+Copy `.env.example` to `.env`, then set `MONGO_URI`, `CLIENT_URL`, `JWT_SECRET`, `OTP_PEPPER`, and SMTP values. Generate independent secrets with:
+```sh
+node -p "require('crypto').randomBytes(48).toString('base64url')"
 ```
+Use a different generated value for each secret. Local `CLIENT_URL` is `http://localhost:5000`; `ALLOW_DEV_OTP=true` is for local development only. Production requires an HTTPS origin, SMTP credentials, and an absolute `UPLOAD_DIR` mounted on persistent storage. The app refuses to boot in production when required values are missing or invalid.
 
-### 4. Seed Database (Optional)
-```bash
-node DataBase_Ai_Data/seed.js
+### 4. Seed demo data (optional, development only)
+The demo seeder deletes existing demo collections and is disabled in production. Run it only against a disposable local database after explicitly enabling it. Set one unique demo password (12+ characters) for all sample accounts:
+```powershell
+$env:ALLOW_DESTRUCTIVE_SEED = 'true'
+$env:SEED_DEMO_PASSWORD = 'your-unique-local-demo-password'
+npm run seed
 ```
+For a remote development database, also set `ALLOW_REMOTE_DEMO_SEED=true`. Never run the seeder against production data.
 
 ### 5. Start Server
 ```bash
-npm start         # Production
+npm start         # Start after the configured MongoDB is reachable
 npm run dev       # Development (with nodemon)
 ```
 
@@ -134,13 +138,15 @@ http://localhost:5000
 
 ---
 
-## 🎭 Demo Accounts (after seeding)
+## Demo accounts (after local seeding)
 
-| Role    | Email                     | Password    |
-|---------|---------------------------|-------------|
-| Citizen | rajesh@example.com        | User@123    |
-| Lawyer  | priya@lexassist.com       | Lawyer@123  |
-| Admin   | admin@lexassist.com       | Admin@123   |
+| Role    | Email                     |
+|---------|---------------------------|
+| Citizen | rajesh@example.com        |
+| Lawyer  | priya@lexassist.com       |
+| Admin   | admin@lexassist.com       |
+
+Use the local `SEED_DEMO_PASSWORD` value; demo credentials are not compiled into the seeder.
 
 ---
 
@@ -195,7 +201,7 @@ http://localhost:5000
 
 | Feature | Description |
 |---------|-------------|
-| **AI Chatbot (RAG)** | Answers legal questions using knowledge base. Uses OpenAI GPT-3.5 if API key set, else smart fallback |
+| **AI Chatbot (RAG)** | Retrieves passages from a local legal library. Optional OpenAI generation requires in-product consent for each external request. |
 | **Case Priority** | Auto-assigns 🔴 High / 🟠 Medium / 🟢 Low based on hearing dates |
 | **Case Timeline** | 5-stage visual progress tracker for each case |
 | **Lawyer Search** | Filter by specialization, city, experience, fee |
@@ -203,7 +209,7 @@ http://localhost:5000
 | **Legal Calendar** | Full monthly calendar with event types |
 | **Role Dashboards** | Separate views for Citizen, Lawyer, Admin |
 | **JWT Auth** | Secure token-based authentication |
-| **Smart Notifications** | Real-time alerts for all important events |
+| **Smart Notifications** | In-app notifications refresh by polling; hearing reminders use India Standard Time. |
 
 ---
 
@@ -214,7 +220,7 @@ http://localhost:5000
 | Backend    | Node.js, Express.js |
 | Database   | MongoDB, Mongoose ODM |
 | Auth       | JWT (JSON Web Tokens), bcryptjs |
-| AI/RAG     | OpenAI GPT-3.5, LangChain (optional) |
+| AI/RAG     | Local TF-IDF retrieval, optional OpenAI API |
 | Frontend   | Vanilla HTML, CSS, JavaScript |
 | Fonts      | Playfair Display, DM Sans (Google Fonts) |
 | File Upload| Multer |
@@ -222,13 +228,26 @@ http://localhost:5000
 | Scheduler  | node-cron |
 | Security   | Helmet, CORS, Rate Limiting |
 
+## Production deployment checklist
+
+- Set `NODE_ENV=production`, `MONGO_URI`, `JWT_SECRET`, `OTP_PEPPER`, `CLIENT_URL`, `EMAIL_USER`, and `EMAIL_PASS` in the host's secret manager. Do not commit `.env`.
+- Set `CLIENT_URL` to the public HTTPS origin with no path. Configure the same origin in DNS and hosting.
+- Mount durable storage and set `UPLOAD_DIR` to its absolute mount path. User documents and lawyer verification files are stored on disk; ephemeral container storage is not suitable.
+- Restrict MongoDB network access to the app, use a least-privilege database user, and configure backups and retention appropriate for confidential legal records.
+- Run `npm ci`, `npm test`, and `npm start` in the deployment pipeline. `/api/health/live` checks process liveness; `/api/health` reports database readiness and is configured as the Railway health check.
+- Production startup also requires `LEGAL_CONTENT_REVIEWED=true` and `LEGAL_CONTENT_REVIEW_DATE=YYYY-MM-DD`. These are an operator attestation: a qualified Indian legal professional must review every bundled legal source and generated document template for current law, accuracy, and licensing before they are set. Keep this false until that review is actually complete. Production admin uploads/deletions to the local legal library are disabled until source-level review tracking exists.
+- Create the first admin with `seedAdmin.js` only as a one-time bootstrap: set `ADMIN_EMAIL`, `ADMIN_PASSWORD` (16+ characters), and `ALLOW_ADMIN_BOOTSTRAP=true` in the deployment environment, run the script, then remove the bootstrap flag and password from the web service environment. The seeder skips when an admin already exists.
+- Configure and verify SMTP before opening registration. Set `OPENAI_API_KEY` only when enabling generated answers; chat questions and uploaded-document text go to OpenAI only after user opt-in.
+- Configure the OpenAI project spend limit as well as `AI_REQUESTS_PER_DAY`; the built-in request quota is per server instance and needs a shared store before horizontally scaling.
+- Review hosting logs, data retention, privacy notices, legal-source licensing, and operational support before serving real users.
+
 ---
 
 ## 📌 Adding Your Own Legal Documents to RAG
 
-1. Add `.txt` or `.md` files to `Ai_Chatbot_Rag/knowledge_base/`
+1. In development, add `.txt` or `.md` files to `Ai_Chatbot_Rag/knowledge_base/`
 2. Name them descriptively (e.g., `criminal_law.txt`, `consumer_rights.txt`)
-3. Restart the server — chatbot will automatically use them
+3. Restart the server — chatbot will automatically use them. Never deploy a new source before qualified legal review; the production gate does not replace that review.
 
 ---
 

@@ -227,7 +227,7 @@
       btn.innerHTML='<span class="loader"></span>'; btn.disabled=true;
       const d = await API.put('/api/auth/change-password', { currentPassword:document.getElementById('currentPw').value, newPassword:newPw });
       if (d.success) { Toast.show('Password changed!','success'); document.getElementById('pwForm').reset(); el.className='alert'; }
-      else { el.className='alert alert-danger show'; el.innerHTML=d.errors?d.errors.join('<br>'):d.message; }
+      else { el.className='alert alert-danger show'; el.textContent=d.errors?d.errors.join(' · '):d.message; }
       btn.innerHTML='Update Password'; btn.disabled=false;
     });
 

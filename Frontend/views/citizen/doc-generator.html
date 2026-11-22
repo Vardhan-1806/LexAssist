@@ -160,7 +160,7 @@
 
   <script src="/js/app.js"></script>
   <script>
-    Auth.guard();
+    Auth.guard(['citizen']);
     let currentDoc = 'fir';
     const today = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
     const v = id => (document.getElementById(id)?.value||'').trim();

@@ -33,6 +33,7 @@
         <a href="/chatbot"           class="sidebar-link"><span class="icon">🤖</span>AI Chatbot</a>
         <a href="/lawyers"           class="sidebar-link"><span class="icon">⚖️</span>Find Lawyers</a>
         <a href="/appointments"      class="sidebar-link"><span class="icon">📅</span>Appointments</a>
+        <a href="/messages"          class="sidebar-link"><span class="icon">✉️</span>Messages</a>
         <a href="/calendar"          class="sidebar-link"><span class="icon">🗓️</span>Calendar</a>
       </nav>
     </aside>
@@ -41,9 +42,13 @@
       <div class="page-header">
         <div class="page-header-row">
           <div><h1>📅 My Appointments</h1><p>All your consultations and bookings</p></div>
-          <a href="/lawyers" class="btn btn-primary">➕ Book New Appointment</a>
+          <a href="/lawyers" class="btn btn-primary" id="bookAppointmentLink">➕ Book New Appointment</a>
         </div>
       </div>
+
+      <section class="card appointment-countdown" id="appointmentCountdown" aria-live="polite" aria-atomic="true">
+        <span class="countdown-label">NEXT CONFIRMED CONSULTATION</span><strong id="countdownName">Loading appointments…</strong><span id="countdownValue"></span>
+      </section>
 
       <!-- Filter Chips -->
       <div class="filter-bar mb-16">
@@ -75,11 +80,34 @@
     </main>
   </div>
 
+  <div class="modal-overlay" id="rescheduleModal" role="presentation">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="rescheduleTitle">
+      <div class="modal-header"><h2 class="modal-title" id="rescheduleTitle">Reschedule consultation</h2><button class="modal-close" type="button" aria-label="Close" onclick="closeReschedule()">✕</button></div>
+      <form id="rescheduleForm">
+        <label class="form-label" for="rescheduleDate">New date</label><input class="form-control mb-12" type="date" id="rescheduleDate" required>
+        <div class="form-label">Available one-hour slots (IST)</div><div class="reschedule-slots" id="rescheduleSlots" aria-live="polite">Choose a date to see available times.</div>
+        <input type="hidden" id="rescheduleSlot">
+        <div class="flex-between mt-16"><button class="btn btn-outline" type="button" onclick="closeReschedule()">Keep current time</button><button class="btn btn-primary" id="rescheduleSubmit" type="submit" disabled>Save new time</button></div>
+      </form>
+    </section>
+  </div>
+
   <script src="/js/app.js"></script>
   <script>
     Auth.guard();
     const user = Auth.user();
-    let allAppts = [];
+    let allAppts = [],reschedulingId=null;
+    const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    if(user.role!=='citizen')document.getElementById('bookAppointmentLink').hidden=true;
+    const dateKeyIST=date=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(date));
+    const appointmentInstant=appointment=>Date.parse(`${dateKeyIST(appointment.date)}T${appointment.timeSlot?.start||'00:00'}:00+05:30`);
+    const renderCountdown=()=>{
+      const now=Date.now(),next=allAppts.filter(a=>a.status==='Confirmed'&&appointmentInstant(a)>now).sort((a,b)=>appointmentInstant(a)-appointmentInstant(b))[0];
+      document.getElementById('countdownName').textContent=next?((user.role==='citizen'?next.lawyer?.name:next.citizen?.name)||'Consultation'):'No upcoming confirmed consultation';
+      if(!next){document.getElementById('countdownValue').textContent='Confirmed appointments will appear here.';return;}
+      const remaining=appointmentInstant(next)-now,days=Math.floor(remaining/86400000),hours=Math.floor(remaining%86400000/3600000),minutes=Math.floor(remaining%3600000/60000),seconds=Math.floor(remaining%60000/1000);
+      document.getElementById('countdownValue').textContent=`Starts in ${days}d ${hours}h ${minutes}m ${seconds}s · ${new Date(next.date).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})} IST`;
+    };
 
     const renderAppts = (appts) => {
       const tbody = document.getElementById('apptTableBody');
@@ -92,24 +120,24 @@
         const other = user.role==='citizen' ? a.lawyer?.name : a.citizen?.name;
         const st    = (a.status||'pending').toLowerCase();
         return `<tr>
-          <td>
-            <div class="appt-date">${DateUtils.format(d)}</div>
-            <div class="appt-time">${a.timeSlot?.start||''}</div>
-          </td>
-          <td>${other||'—'}</td>
-          <td>${a.type||'—'}</td>
-          <td>${a.mode||'—'}${a.meetingLink?` <a href="${a.meetingLink}" target="_blank" style="color:var(--gold);font-size:0.78rem;display:block">Join</a>`:''}</td>
-          <td style="font-size:0.8rem">${a.case?.title||a.case?.caseNumber||'—'}</td>
-          <td><span class="badge badge-${st}">${a.status}</span></td>
+          <td><div class="appt-date">${esc(DateUtils.format(d))}</div><div class="appt-time">${esc(a.timeSlot?.start||'')} IST</div></td>
+          <td>${esc(other||'—')}</td>
+          <td>${esc(a.type||'—')}</td>
+          <td>${esc(a.mode||'—')}${a.meetingLink&&/^https:\/\//i.test(a.meetingLink)?` <a href="${esc(a.meetingLink)}" target="_blank" rel="noopener noreferrer" style="color:var(--gold);font-size:0.78rem;display:block">Join secure meeting</a>`:''}</td>
+          <td style="font-size:0.8rem">${esc(a.case?.title||a.case?.caseNumber||'—')}</td>
+          <td><span class="badge badge-${['pending','confirmed','cancelled','completed','no-show'].includes(st)?st:'pending'}">${esc(a.status)}</span>${a.cancelReason?`<div class="text-muted appt-reason">${esc(a.cancelReason)}</div>`:''}</td>
           <td>
             <div style="display:flex;gap:5px;flex-wrap:wrap">
-              ${a.status==='Pending'&&user.role==='lawyer'?`<button class="btn btn-primary btn-sm" onclick="updateAppt('${a._id}','Confirmed')">Confirm</button>`:''}
-              ${!['Cancelled','Completed'].includes(a.status)?`<button class="btn btn-sm" style="background:#fef2f2;color:var(--danger);border:none;cursor:pointer" onclick="updateAppt('${a._id}','Cancelled')">Cancel</button>`:''}
-              ${a.status==='Confirmed'&&user.role==='lawyer'?`<button class="btn btn-sm btn-outline" onclick="updateAppt('${a._id}','Completed')">Done</button>`:''}
+              ${user.role!=='admin'&&(user.role==='citizen'?a.lawyer?._id:a.citizen?._id)?`<a class="btn btn-outline btn-sm" href="/messages?with=${encodeURIComponent(user.role==='citizen'?a.lawyer?._id:a.citizen?._id)}">Message</a>`:''}
+              ${a.status==='Pending'&&user.role==='lawyer'?`<button class="btn btn-primary btn-sm appt-action" data-action="confirm" data-id="${esc(a._id)}">Accept</button><button class="btn btn-outline btn-sm appt-action" data-action="decline" data-id="${esc(a._id)}">Decline</button>`:''}
+              ${a.status==='Confirmed'&&user.role==='lawyer'?`<button class="btn btn-outline btn-sm appt-action" data-action="reschedule" data-id="${esc(a._id)}">Reschedule</button>${a.mode==='Online'?`<button class="btn btn-outline btn-sm appt-action" data-action="link" data-id="${esc(a._id)}">${a.meetingLink?'Update link':'Add link'}</button>`:''}<button class="btn btn-outline btn-sm appt-action" data-action="complete" data-id="${esc(a._id)}">Mark complete</button><button class="btn btn-outline btn-sm appt-action" data-action="no-show" data-id="${esc(a._id)}">Mark no-show</button>`:''}
+              ${['Pending','Confirmed'].includes(a.status)&&user.role!=='admin'?`<button class="btn btn-danger btn-sm appt-action" data-action="cancel" data-id="${esc(a._id)}">Cancel</button>`:''}
+              ${user.role==='admin'?'View only':''}
             </div>
           </td>
         </tr>`;
       }).join('');
+      tbody.querySelectorAll('.appt-action').forEach(button=>button.addEventListener('click',()=>handleApptAction(button.dataset.id,button.dataset.action)));
     };
 
     const filterAppts = (f, el) => {
@@ -123,17 +151,63 @@
         const d = await API.get('/api/appointments');
         allAppts = d.data || [];
         renderAppts(allAppts);
+        renderCountdown();
       } catch(e) {}
     };
 
-    const updateAppt = async (id, status) => {
+    const updateAppt = async (id, status, cancelReason='') => {
       try {
-        const d = await API.put(`/api/appointments/${id}/status`, {status});
+        const d = await API.put(`/api/appointments/${id}/status`, {status,cancelReason});
         if (d.success) { Toast.show(`Appointment ${status.toLowerCase()}!`,'success'); loadAppts(); }
         else Toast.show(d.message,'danger');
       } catch(e) { Toast.show('Error updating appointment','danger'); }
     };
 
+    const handleApptAction=async(id,action)=>{
+      if(action==='reschedule'){openReschedule(id);return;}
+      if(action==='link'){
+        const meetingLink=window.prompt('Paste the HTTPS meeting link for this online appointment:');if(meetingLink===null)return;
+        const result=await API.put(`/api/appointments/${id}/meeting-link`,{meetingLink});Toast.show(result.success?'Meeting link saved.':result.message||'Could not save link.',result.success?'success':'danger');if(result.success)loadAppts();return;
+      }
+      if(action==='cancel'||action==='decline'){
+        const reason=user.role==='lawyer'?window.prompt('Add a brief reason for declining or cancelling this appointment:'):'';
+        if(user.role==='lawyer'&&reason===null)return;
+        if(!window.confirm(action==='decline'?'Decline this appointment request?':'Cancel this appointment?'))return;
+        return updateAppt(id,'Cancelled',reason||'');
+      }
+      const status={confirm:'Confirmed',complete:'Completed','no-show':'No-Show'}[action];
+      if(status&&window.confirm(`Mark this appointment ${status.toLowerCase()}?`))updateAppt(id,status);
+    };
+
+    const todayIST=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const closeReschedule=()=>{document.getElementById('rescheduleModal').classList.remove('open');reschedulingId=null;};
+    const loadRescheduleSlots=async()=>{
+      const date=document.getElementById('rescheduleDate').value,root=document.getElementById('rescheduleSlots'),selected=document.getElementById('rescheduleSlot'),save=document.getElementById('rescheduleSubmit');
+      selected.value='';save.disabled=true;if(!date){root.textContent='Choose a date to see available times.';return;}
+      root.textContent='Checking available times…';
+      const result=await API.get(`/api/appointments/slots?lawyerId=${encodeURIComponent(user.id||user._id)}&date=${encodeURIComponent(date)}&excludeId=${encodeURIComponent(reschedulingId||'')}`);
+      root.replaceChildren();if(!result.success||!result.data?.length){root.textContent=result.message||'No one-hour slots are available for that date.';return;}
+      result.data.forEach(slot=>{const button=document.createElement('button');button.type='button';button.className='slot-btn';button.textContent=slot;button.addEventListener('click',()=>{root.querySelectorAll('.slot-btn').forEach(item=>item.classList.remove('selected'));button.classList.add('selected');selected.value=slot;save.disabled=false;});root.append(button);});
+    };
+    const openReschedule=id=>{
+      reschedulingId=id;const appointment=allAppts.find(item=>item._id===id),input=document.getElementById('rescheduleDate');input.min=todayIST();
+      input.value=appointment?dateKeyIST(appointment.date):todayIST();document.getElementById('rescheduleModal').classList.add('open');loadRescheduleSlots();
+      document.getElementById('rescheduleDate').focus();
+    };
+    document.getElementById('rescheduleDate').addEventListener('change',loadRescheduleSlots);
+    document.getElementById('rescheduleForm').addEventListener('submit',async event=>{
+      event.preventDefault();const start=document.getElementById('rescheduleSlot').value;if(!reschedulingId||!start)return;
+      const button=document.getElementById('rescheduleSubmit');button.disabled=true;button.textContent='Saving…';
+      const endMinutes=Number(start.slice(0,2))*60+Number(start.slice(3))+60,end=`${String(Math.floor(endMinutes/60)).padStart(2,'0')}:${String(endMinutes%60).padStart(2,'0')}`;
+      const result=await API.put(`/api/appointments/${reschedulingId}/reschedule`,{date:document.getElementById('rescheduleDate').value,timeSlot:{start,end}});
+      button.textContent='Save new time';button.disabled=false;
+      if(!result.success){Toast.show(result.message||'Could not reschedule.','danger');return;}
+      closeReschedule();Toast.show('Appointment rescheduled; the citizen has been notified.','success');loadAppts();
+    });
+    document.getElementById('rescheduleModal').addEventListener('click',event=>{if(event.target.id==='rescheduleModal')closeReschedule();});
+    document.addEventListener('keydown',event=>{if(event.key==='Escape')closeReschedule();});
+
+    setInterval(renderCountdown,1000);
     loadAppts();
   </script>
   <script src="/js/global-enhancements.js"></script>

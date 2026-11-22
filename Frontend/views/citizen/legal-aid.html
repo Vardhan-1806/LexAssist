@@ -96,7 +96,7 @@
 
   <script src="/js/app.js"></script>
   <script>
-    Auth.guard();
+    Auth.guard(['citizen']);
     const answers = {};
 
     const ans = (q, val) => {

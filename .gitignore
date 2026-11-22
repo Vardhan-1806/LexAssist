@@ -8,3 +8,5 @@ uploads/
 Ai_Chatbot_Rag/embeddings/vector_store/
 *.faiss
 *.pkl
+
+.opencode/

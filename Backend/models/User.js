@@ -43,7 +43,7 @@ userSchema.methods.matchPassword = async function(entered) {
 };
 
 userSchema.methods.generateOTP = function() {
-  const otp       = String(Math.floor(1000 + Math.random() * 9000)); // 4 digits
+  const otp       = String(crypto.randomInt(100000, 1000000)); // 6 digits
   this.otp        = crypto.createHash('sha256').update(otp).digest('hex');
   this.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
   return otp;

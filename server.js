@@ -5,37 +5,46 @@ const cors        = require('cors');
 const helmet      = require('helmet');
 const morgan      = require('morgan');
 const compression = require('compression');
-const session     = require('express-session');
-const MongoStore  = require('connect-mongo');
 const path        = require('path');
 const rateLimit   = require('express-rate-limit');
 const fs          = require('fs');
 const { ensureUploadDirectories } = require('./Backend/utils/uploadStorage');
+const { validateEnvironment } = require('./Backend/config/environment');
+const { protect, authorize } = require('./Backend/middleware/auth');
 
 const app = express();
+const clientOrigin=()=>{
+  try { return process.env.CLIENT_URL ? new URL(process.env.CLIENT_URL).origin : 'http://localhost:5000'; }
+  catch { return 'http://localhost:5000'; }
+};
 
 // ── Ensure directories exist ──────────────────────────────────
 ensureUploadDirectories();
 
-if (process.env.NODE_ENV === 'production') {
-  const requiredSecrets = ['MONGO_URI', 'JWT_SECRET', 'SESSION_SECRET'];
-  const missingSecrets = requiredSecrets.filter(name => !process.env[name]);
-  const weakSecrets = ['JWT_SECRET', 'SESSION_SECRET'].filter(name => (process.env[name] || '').length < 32);
-  if (missingSecrets.length || weakSecrets.length) {
-    const details = [
-      missingSecrets.length ? `Missing: ${missingSecrets.join(', ')}` : '',
-      weakSecrets.length ? `Use at least 32 characters for: ${weakSecrets.join(', ')}` : '',
-    ].filter(Boolean).join('. ');
-    console.error(`❌ Production configuration error. ${details}`);
-    process.exit(1);
-  }
-}
-
 // ── Security Middleware ───────────────────────────────────────
-app.set('trust proxy', 1);
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.set('trust proxy', process.env.TRUST_PROXY || 1);
+app.use(helmet({
+  crossOriginEmbedderPolicy:false,
+  referrerPolicy:{policy:'no-referrer'},
+  contentSecurityPolicy:{directives:{
+    defaultSrc:["'self'"],
+    scriptSrc:["'self'","'unsafe-inline'",'https://cdnjs.cloudflare.com'],
+    scriptSrcAttr:["'unsafe-inline'"],
+    styleSrc:["'self'","'unsafe-inline'",'https://fonts.googleapis.com'],
+    fontSrc:["'self'",'https://fonts.gstatic.com','data:'],
+    imgSrc:["'self'",'data:','blob:'],
+    connectSrc:["'self'"],
+    objectSrc:["'none'"],
+    baseUri:["'self'"],
+    frameAncestors:["'none'"],
+    formAction:["'self'"],
+    ...(process.env.NODE_ENV==='production'?{upgradeInsecureRequests:[]}:{}),
+  }},
+}));
 app.use(cors({
-  origin:      process.env.CLIENT_URL || 'http://localhost:5000',
+  origin:      (origin,callback) => {
+    callback(null,!origin||origin===clientOrigin());
+  },
   credentials: true,
   methods:     ['GET','POST','PUT','DELETE','PATCH'],
   allowedHeaders: ['Content-Type','Authorization'],
@@ -57,26 +66,18 @@ const authLimiter = rateLimit({
 app.use('/api/', apiLimiter);
 app.use('/api/auth/login',    authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/verify-otp', authLimiter);
+app.use('/api/auth/resend-otp', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
 
 // ── Body Parsing ──────────────────────────────────────────────
 app.use(compression());
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
-app.use(express.json({ limit:'10mb' }));
-app.use(express.urlencoded({ extended:true, limit:'10mb' }));
-
-// ── Session ───────────────────────────────────────────────────
-app.use(session({
-  secret:            process.env.SESSION_SECRET || 'local-development-only-session-secret',
-  resave:            false,
-  saveUninitialized: false,
-  store:             MongoStore.create({ mongoUrl: process.env.MONGO_URI }),
-  cookie: {
-    secure:   process.env.NODE_ENV === 'production',
-    httpOnly: true,
-    maxAge:   7 * 24 * 60 * 60 * 1000,
-    sameSite: 'lax',
-  }
-}));
+// Verification and shared-document tokens are in legacy URL paths; never persist them in access logs.
+morgan.token('safe-url',req=>String(req.originalUrl||'').split('?')[0].replace(/^\/(api\/auth\/verify-email|verify-email|reset-password|documents\/shared)\/[^/?]+/i,'/$1/[redacted]'));
+app.use(morgan(':method :safe-url :status :res[content-length] - :response-time ms'));
+app.use(express.json({ limit:'1mb' }));
+app.use(express.urlencoded({ extended:false, limit:'64kb' }));
 
 // ── Static Files ──────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'Frontend/public'), {
@@ -85,7 +86,11 @@ app.use(express.static(path.join(__dirname, 'Frontend/public'), {
 // Uploaded legal files are served only through ownership-checked document routes.
 
 // ── API Routes ────────────────────────────────────────────────
-app.get('/api/health', (req,res) => res.json({ status:'ok', timestamp:Date.now(), version:'1.0.0', uptime: process.uptime() }));
+app.get('/api/health/live', (req,res) => res.json({status:'ok',timestamp:Date.now(),uptime:process.uptime()}));
+app.get('/api/health', (req,res) => {
+  const ready=mongoose.connection.readyState===1;
+  res.status(ready?200:503).json({status:ready?'ok':'not_ready',database:ready?'connected':'disconnected',timestamp:Date.now(),version:'1.0.0',uptime:process.uptime()});
+});
 
 app.use('/api/auth',          require('./Backend/routes/authRoutes'));
 app.use('/api/users',         require('./Backend/routes/userRoutes'));
@@ -97,6 +102,7 @@ app.use('/api/chatbot',       require('./Backend/routes/chatbotRoutes'));
 app.use('/api/admin',         require('./Backend/routes/adminRoutes'));
 app.use('/api/documents',     require('./Backend/routes/documentRoutes'));
 app.use('/api/notifications', require('./Backend/routes/notificationRoutes'));
+app.use('/api/messages',      require('./Backend/routes/messageRoutes'));
 
 // ── Page Routes ───────────────────────────────────────────────
 const V    = path.join(__dirname, 'Frontend/views');
@@ -105,6 +111,16 @@ const page = f => (req, res) => {
   if (!fs.existsSync(fp)) return res.status(404).sendFile(path.join(V,'shared/404.html'));
   res.sendFile(fp);
 };
+const pageRole = (...roles) => (req, res, next) => {
+  const authResponse = { status() { return this; }, json() { res.redirect('/login'); } };
+  protect(req, authResponse, () => {
+    if (!roles.includes(req.user.role)) {
+      const home = { citizen:'/dashboard/citizen', lawyer:'/dashboard/lawyer', admin:'/dashboard/admin' }[req.user.role] || '/login';
+      return res.redirect(home);
+    }
+    next();
+  });
+};
 
 // Auth
 app.get('/',                     page('auth/landing.html'));
@@ -112,28 +128,29 @@ app.get('/login',                page('auth/login.html'));
 app.get('/register',             page('auth/register.html'));
 
 // Citizen
-app.get('/dashboard/citizen',    page('citizen/dashboard.html'));
-app.get('/cases',                page('citizen/cases.html'));
-app.get('/chatbot',              page('citizen/chatbot.html'));
-app.get('/lawyers',              page('citizen/lawyers.html'));
-app.get('/documents',            page('citizen/documents.html'));
-app.get('/documents/generate',   page('citizen/doc-generator.html'));
-app.get('/similar-cases',        page('citizen/similar-cases.html'));
-app.get('/legal-aid',            page('citizen/legal-aid.html'));
-app.get('/profile',               page('shared/profile.html'));
+app.get('/dashboard/citizen',    pageRole('citizen'), page('citizen/dashboard.html'));
+app.get('/cases',                pageRole('citizen','lawyer','admin'), page('citizen/cases.html'));
+app.get('/chatbot',              pageRole('citizen'), page('citizen/chatbot.html'));
+app.get('/lawyers',              pageRole('citizen'), page('citizen/lawyers.html'));
+app.get('/documents',            pageRole('citizen'), page('citizen/documents.html'));
+app.get('/documents/generate',   pageRole('citizen'), page('citizen/doc-generator.html'));
+app.get('/similar-cases',        pageRole('citizen'), page('citizen/similar-cases.html'));
+app.get('/legal-aid',            pageRole('citizen'), page('citizen/legal-aid.html'));
+app.get('/profile',               pageRole('citizen','lawyer','admin'), page('shared/profile.html'));
 app.get('/forgot-password',       page('shared/forgot-password.html'));
 
 // Lawyer
-app.get('/dashboard/lawyer',     page('lawyer/dashboard.html'));
-app.get('/lawyer/documents',     page('lawyer/documents.html'));
+app.get('/dashboard/lawyer',     pageRole('lawyer'), page('lawyer/dashboard.html'));
+app.get('/lawyer/documents',     pageRole('lawyer'), page('lawyer/documents.html'));
 
 // Admin
-app.get('/dashboard/admin',      page('admin/dashboard.html'));
+app.get('/dashboard/admin',      pageRole('admin'), page('admin/dashboard.html'));
 app.get('/admin/login',           page('admin/login.html'));
 
 // Shared
-app.get('/appointments',         page('shared/appointments.html'));
-app.get('/calendar',             page('shared/calendar.html'));
+app.get('/appointments',         pageRole('citizen','lawyer','admin'), page('shared/appointments.html'));
+app.get('/messages',             pageRole('citizen','lawyer'), page('shared/messages.html'));
+app.get('/calendar',             pageRole('citizen','lawyer','admin'), page('shared/calendar.html'));
 app.get('/documents/shared/:token', page('shared/doc-share.html'));
 app.get('/verify-email/:token',    (req,res) => res.redirect(`/api/auth/verify-email/${req.params.token}`));
 app.get('/reset-password/:token',   page('shared/reset-password.html'));
@@ -147,25 +164,35 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ success:false, message: process.env.NODE_ENV==='production' ? 'Something went wrong' : err.message });
 });
 
-// ── Database + Server Start ───────────────────────────────────
-mongoose.connect(process.env.MONGO_URI, {
-  serverSelectionTimeoutMS: 10000,
-  socketTimeoutMS:          45000,
-})
-.then(() => {
-  console.log('✅ MongoDB Connected');
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 LEXASSIST → http://localhost:${PORT}`);
-    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-    // Start cron jobs
-    try {
-      const { startReminders } = require('./Backend/utils/reminderCron');
-      startReminders();
-    } catch(e) { console.warn('Cron job warning:', e.message); }
+const startServer=async()=>{
+  const errors=validateEnvironment();
+  if(errors.length)throw new Error(`Configuration error:\n- ${errors.join('\n- ')}`);
+  await mongoose.connect(process.env.MONGO_URI,{serverSelectionTimeoutMS:10000,socketTimeoutMS:45000});
+  const port=Number(process.env.PORT||5000);
+  const httpServer=await new Promise((resolve,reject)=>{
+    const server=app.listen(port,'0.0.0.0',()=>resolve(server));
+    server.once('error',reject);
   });
-})
-.catch(err => {
-  console.error('❌ Database connection failed:', err.message);
-  process.exit(1);
-});
+  console.log(`✅ MongoDB connected; LEXASSIST listening on port ${port} (${process.env.NODE_ENV||'development'})`);
+  try { require('./Backend/utils/reminderCron').startReminders(); }
+  catch(error) { console.warn('Reminder scheduler could not start:',error.message); }
+
+  let stopping=false;
+  const shutdown=async signal=>{
+    if(stopping)return;stopping=true;
+    console.log(`Received ${signal}; shutting down gracefully.`);
+    const timer=setTimeout(()=>process.exit(1),10000);timer.unref();
+    await new Promise(resolve=>httpServer.close(resolve));
+    await mongoose.disconnect();
+    clearTimeout(timer);process.exit(0);
+  };
+  process.once('SIGINT',()=>shutdown('SIGINT'));
+  process.once('SIGTERM',()=>shutdown('SIGTERM'));
+  return httpServer;
+};
+
+if(require.main===module){
+  startServer().catch(error=>{console.error(`❌ ${error.message}`);process.exitCode=1;});
+}
+
+module.exports={app,startServer};

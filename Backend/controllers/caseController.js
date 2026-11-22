@@ -9,7 +9,7 @@
 const Case    = require('../models/Case');
 const User    = require('../models/User');
 const { Notification, CalendarEvent } = require('../models/Extras');
-const { sendEmail } = require('../utils/emailService');
+const { sendEmail, escapeHtml } = require('../utils/emailService');
 const { calculateLawyerRating } = require('../utils/lawyerRating');
 
 // Generate unique case number
@@ -28,10 +28,12 @@ exports.getCases = async (req, res) => {
     // Search by case ID or case number (both citizen and lawyer)
     if (caseId || caseNumber) {
       const searchVal = caseId || caseNumber;
-      filter.$or = [
+      const searchFilter = { $or:[
         { caseNumber: new RegExp(searchVal,'i') },
         { caseId:     new RegExp(searchVal,'i') },
-      ];
+      ]};
+      if (req.user.role === 'admin') Object.assign(filter, searchFilter);
+      else filter.$and = [{ $or:[{citizen:req.user.id},{lawyer:req.user.id}] }, searchFilter];
     } else {
       // Role-based filtering
       if (req.user.role === 'citizen') filter.citizen = req.user.id;
@@ -92,24 +94,41 @@ exports.searchCase = async (req, res) => {
 // @route POST /api/cases
 exports.createCase = async (req, res) => {
   try {
+    if (!['citizen','lawyer'].includes(req.user.role)) return res.status(403).json({success:false,message:'Only a citizen or assigned lawyer can create a case'});
     const caseNumber = await generateCaseNumber();
 
     // Lawyer can file on behalf of citizen (citizenId in body), or file for themselves
     let citizenId = req.user.id;
     if (req.user.role === 'lawyer' && req.body.citizenId) {
       citizenId = req.body.citizenId;
+      const Appointment = require('../models/Appointment');
+      const hasRelationship = await Appointment.exists({ citizen:citizenId, lawyer:req.user.id, status:{ $in:['Confirmed','Completed'] } });
+      const existingAssignment = await Case.exists({ citizen:citizenId, lawyer:req.user.id });
+      if (!hasRelationship && !existingAssignment) return res.status(403).json({success:false,message:'A confirmed consultation is required before adding a client case'});
     }
 
     const count = await Case.countDocuments({ citizen: citizenId });
     const user  = await User.findById(citizenId).select('userId name');
     const caseId = `${user?.userId||'LEX'}-C${String(count+1).padStart(3,'0')}`;
 
+    const lawyerId = req.user.role === 'lawyer' ? req.user.id : req.body.lawyerId;
+    if (req.user.role === 'citizen' && lawyerId) {
+      const Lawyer = require('../models/Lawyer');
+      if (!await Lawyer.exists({user:lawyerId,isVerified:true})) return res.status(400).json({success:false,message:'Select a verified lawyer'});
+    }
     const newCase = await Case.create({
-      ...req.body,
+      title: req.body.title,
+      caseType: req.body.caseType,
+      description: req.body.description,
+      court: req.body.court,
+      judge: req.body.judge,
+      nextHearingDate: req.body.nextHearingDate,
+      requiredActions: Array.isArray(req.body.requiredActions) ? req.body.requiredActions.slice(0,20) : [],
+      notes: req.body.notes,
       caseNumber,
       caseId,
       citizen:   citizenId,
-      lawyer:    req.user.role === 'lawyer' ? req.user.id : req.body.lawyerId || undefined,
+      lawyer:    lawyerId || undefined,
       filedDate: new Date(),
       stages: [
         { name:'Case Filed',         description:'Case has been registered on LEXASSIST', isCompleted:true, completedAt:new Date() },
@@ -201,10 +220,10 @@ exports.updateStage = async (req, res) => {
             <h2 style="color:#c9a84c;margin:0">LEX<span style="color:#fff">ASSIST</span></h2>
           </div>
           <h3 style="color:#0d1b35">Case Timeline Updated</h3>
-          <p style="color:#64748b">Your case <strong>${caseDoc.caseNumber}</strong> has been updated.</p>
+          <p style="color:#64748b">Your case <strong>${escapeHtml(caseDoc.caseNumber)}</strong> has been updated.</p>
           <div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:14px;border-radius:8px;margin:16px 0">
-            <p style="margin:0;color:#16a34a;font-weight:600">✅ Stage Completed: ${stageName}</p>
-            ${req.body.notes?`<p style="margin:8px 0 0;color:#64748b;font-size:0.84rem">Note from lawyer: ${req.body.notes}</p>`:''}
+            <p style="margin:0;color:#16a34a;font-weight:600">✅ Stage Completed: ${escapeHtml(stageName)}</p>
+            ${req.body.notes?`<p style="margin:8px 0 0;color:#64748b;font-size:0.84rem">Note from lawyer: ${escapeHtml(req.body.notes)}</p>`:''}
           </div>
           <a href="${process.env.CLIENT_URL||'http://localhost:5000'}/cases" style="display:inline-block;background:#c9a84c;color:#0d1b35;padding:11px 24px;border-radius:50px;font-weight:700;text-decoration:none">View Case →</a>
         </div>`
@@ -227,7 +246,11 @@ exports.updateCase = async (req, res) => {
     if (!isCitizen && !isLawyer && req.user.role!=='admin')
       return res.status(403).json({ success:false, message:'Not authorized' });
 
-    Object.assign(caseDoc, req.body);
+    const editableByCitizen = ['title','caseType','description','court','judge','nextHearingDate','notes','requiredActions'];
+    const editableByLawyer = ['court','judge','nextHearingDate','notes','requiredActions'];
+    const allowed = req.user.role === 'admin' ? ['title','caseType','description','court','judge','status','priority','nextHearingDate','notes','requiredActions','isArchived']
+      : isCitizen ? editableByCitizen : editableByLawyer;
+    allowed.forEach(key => { if (req.body[key] !== undefined) caseDoc[key] = req.body[key]; });
 
     // If hearing date changed, update calendar
     if (req.body.nextHearingDate) {
@@ -248,6 +271,11 @@ exports.addTimeline = async (req, res) => {
   try {
     const caseDoc = await Case.findById(req.params.id).populate('citizen','name email');
     if (!caseDoc) return res.status(404).json({ success:false, message:'Case not found' });
+
+    const isCitizen = caseDoc.citizen._id.toString() === req.user.id;
+    const isLawyer = caseDoc.lawyer?.toString() === req.user.id;
+    if (!isCitizen && !isLawyer && req.user.role !== 'admin') return res.status(403).json({success:false,message:'Not authorized to update this case'});
+    if (typeof req.body.event !== 'string' || !req.body.event.trim() || req.body.event.length > 1000) return res.status(400).json({success:false,message:'Enter a timeline update under 1,000 characters'});
 
     caseDoc.timeline.push({ event:req.body.event, date:new Date(), addedBy:req.user.id, role:req.user.role });
     await caseDoc.save();

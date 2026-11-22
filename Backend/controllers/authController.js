@@ -6,13 +6,22 @@ const jwt    = require('jsonwebtoken');
 const User   = require('../models/User');
 const { sendOTPEmail, sendWelcomeEmail } = require('../utils/emailService');
 
+const developmentOTPField=(otp,delivery)=>process.env.NODE_ENV==='development'&&process.env.ALLOW_DEV_OTP==='true'&&delivery?.dev?{devOTP:otp}:{};
+
 const signToken = (id, expiry = '7d') =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: expiry });
 
 const sendToken = (user, statusCode, res) => {
   const token = signToken(user._id);
+  res.cookie('lexassist_session', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
   user.password = undefined;
-  res.status(statusCode).json({ success: true, token, data: user });
+  res.status(statusCode).json({ success: true, data: user });
 };
 
 // ── Password validation ───────────────────────────────────────
@@ -26,17 +35,19 @@ const validatePassword = (pw) => {
   return errs;
 };
 
-// ── Generate 4-digit OTP ──────────────────────────────────────
-const makeOTP = () => String(Math.floor(1000 + Math.random() * 9000));
-const hashOTP = (otp) => crypto.createHash('sha256').update(otp).digest('hex');
+// ── Generate 6-digit OTP ──────────────────────────────────────
+const makeOTP = () => String(crypto.randomInt(100000, 1000000));
+const hashOTP = (otp) => crypto.createHmac('sha256', process.env.OTP_PEPPER || process.env.JWT_SECRET || 'local-development-otp-pepper').update(otp).digest('hex');
 
 // @route POST /api/auth/register — Step 1: Collect info, send OTP
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role, phone } = req.body;
+    const { name, email, password, role, phone, barCouncilId, specializations, experience } = req.body;
 
     if (!name || !email || !password)
       return res.status(400).json({ success: false, message: 'Name, email and password are required' });
+    if (role && !['citizen','lawyer'].includes(role)) return res.status(400).json({success:false,message:'Choose citizen or lawyer account type'});
+    if ((role || 'citizen') === 'lawyer' && !String(barCouncilId || '').trim()) return res.status(400).json({success:false,message:'Bar Council ID is required for lawyer registration'});
 
     if (phone && !/^[6-9]\d{9}$/.test(phone))
       return res.status(400).json({ success: false, message: 'Enter a valid 10-digit Indian mobile number (starts with 6-9)' });
@@ -70,15 +81,27 @@ exports.register = async (req, res) => {
       });
     }
 
+    if ((role || 'citizen') === 'lawyer') {
+      const Lawyer = require('../models/Lawyer');
+      const registeredUser = await User.findOne({email:email.toLowerCase()}).select('_id');
+      await Lawyer.findOneAndUpdate({user:registeredUser._id}, {
+        user:registeredUser._id,
+        barCouncilId:String(barCouncilId).trim().slice(0,80),
+        specializations:Array.isArray(specializations) ? specializations.filter(item => ['Criminal','Civil','Family','Corporate','Property','Labour','Cyber','Taxation','Constitutional','Environmental','Other'].includes(item)).slice(0,8) : [],
+        experience:Math.min(60,Math.max(0,Number(experience)||0)),
+        isVerified:false,
+      }, {upsert:true,new:true,runValidators:true});
+    }
+
     // Send OTP email
     const result = await sendOTPEmail(email, name, otp, 'registration');
-    console.log(`📧 OTP [${otp}] → ${email} | sent: ${result.success}`);
+    if (!result.success) return res.status(503).json({success:false,message:'Email delivery is temporarily unavailable. Please try again shortly.'});
 
     res.status(200).json({
       success: true,
       message: `Verification code sent to ${email}. Check your inbox and spam folder.`,
       data:    { email, name, requiresOTP: true },
-      devOTP:  process.env.NODE_ENV !== 'production' ? otp : undefined,
+      ...developmentOTPField(otp,result),
     });
   } catch (err) {
     console.error('Register error:', err);
@@ -90,7 +113,7 @@ exports.register = async (req, res) => {
 exports.verifyOTP = async (req, res) => {
   try {
     const { email, otp } = req.body;
-    if (!email || !otp)
+    if (!email || !/^\d{6}$/.test(String(otp || '')))
       return res.status(400).json({ success: false, message: 'Email and OTP are required' });
 
     const user = await User.findOne({ email: email.toLowerCase() });
@@ -142,10 +165,11 @@ exports.resendOTP = async (req, res) => {
     );
 
     const result = await sendOTPEmail(email, user.name, otp, 'verification');
-    console.log(`📧 Resend OTP [${otp}] → ${email} | sent: ${result.success}`);
+    if (!result.success) return res.status(503).json({success:false,message:'Email delivery is temporarily unavailable. Please try again shortly.'});
 
     res.json({ success: true, message: `New code sent to ${email}. Check inbox and spam.`,
-      devOTP: process.env.NODE_ENV !== 'production' ? otp : undefined });
+      ...developmentOTPField(otp,result),
+      });
   } catch (err) {
     console.error('Resend OTP error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -171,26 +195,6 @@ exports.login = async (req, res) => {
     if (!user.isActive)
       return res.status(401).json({ success: false, message: 'Account deactivated. Contact support.' });
 
-    // If lawyer role, check if their Lawyer profile is verified by admin
-    if (user.role === 'lawyer') {
-      const Lawyer = require('../models/Lawyer');
-      const lawyerProfile = await Lawyer.findOne({ user: user._id });
-      if (lawyerProfile && !lawyerProfile.isVerified && !lawyerProfile.isRejected) {
-        return res.status(403).json({
-          success: false,
-          message: 'Your lawyer profile is pending admin verification. You will receive an email once approved.',
-          pendingVerification: true,
-        });
-      }
-      if (lawyerProfile?.isRejected) {
-        return res.status(403).json({
-          success: false,
-          message: `Your lawyer profile was not approved. Reason: ${lawyerProfile.rejectReason || 'Please contact admin.'}`,
-          rejected: true,
-        });
-      }
-    }
-
     if (!user.isVerified) {
       // Auto-send new OTP
       const otp       = makeOTP();
@@ -199,15 +203,15 @@ exports.login = async (req, res) => {
         { _id: user._id },
         { $set: { otp: hashedOTP, otpExpires: new Date(Date.now() + 10 * 60 * 1000) } }
       );
-      sendOTPEmail(user.email, user.name, otp, 'email verification').catch(console.error);
-      console.log(`📧 Login OTP [${otp}] → ${user.email}`);
+      const delivery=await sendOTPEmail(user.email, user.name, otp, 'email verification');
+      if (!delivery.success) return res.status(503).json({success:false,message:'Email delivery is temporarily unavailable. Please try again shortly.'});
 
       return res.status(401).json({
         success:     false,
         message:     'Please verify your email first. A new code has been sent.',
         requiresOTP: true,
         email:       user.email,
-        devOTP:      process.env.NODE_ENV !== 'production' ? otp : undefined,
+        ...developmentOTPField(otp,delivery),
       });
     }
 
@@ -215,9 +219,13 @@ exports.login = async (req, res) => {
 
     const expiry = rememberMe ? '24h' : '7d';
     const token  = signToken(user._id, expiry);
+    res.cookie('lexassist_session', token, {
+      httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/',
+      maxAge: rememberMe ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000,
+    });
     user.password = undefined;
 
-    res.json({ success: true, token, expiresIn: expiry, data: user });
+    res.json({ success: true, expiresIn: expiry, data: user });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -227,7 +235,7 @@ exports.login = async (req, res) => {
 // @route GET /api/auth/me
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.id).select('name email role phone address profilePhoto bio isVerified isActive userId');
     res.json({ success: true, data: user });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -274,8 +282,7 @@ exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email: email?.toLowerCase() });
-    if (!user)
-      return res.status(404).json({ success: false, message: 'No account found with this email' });
+    if (!user || !user.isVerified) return res.json({success:true,message:'If an account exists for that email, a reset code has been sent.'});
 
     const otp       = makeOTP();
     const hashedOTP = hashOTP(otp);
@@ -284,11 +291,9 @@ exports.forgotPassword = async (req, res) => {
       { $set: { otp: hashedOTP, otpExpires: new Date(Date.now() + 10 * 60 * 1000) } }
     );
 
-    await sendOTPEmail(email, user.name, otp, 'password reset');
-    console.log(`📧 Reset OTP [${otp}] → ${email}`);
+    const delivery=await sendOTPEmail(email, user.name, otp, 'password reset');
 
-    res.json({ success: true, message: 'Password reset code sent to your email',
-      devOTP: process.env.NODE_ENV !== 'production' ? otp : undefined });
+    res.json({ success: true, message: 'If an account exists for that email, a reset code has been sent.', ...developmentOTPField(otp,delivery) });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -305,7 +310,9 @@ exports.resetPassword = async (req, res) => {
     const user = await User.findOne({ email: email?.toLowerCase() });
     if (!user)
       return res.status(404).json({ success: false, message: 'No account found' });
+    if (!user.isVerified) return res.status(400).json({success:false,message:'Verify your email before resetting your password'});
 
+    if (!/^\d{6}$/.test(String(otp || ''))) return res.status(400).json({ success:false, message:'Enter the 6-digit code' });
     const hashed = hashOTP(String(otp));
     if (user.otp !== hashed)
       return res.status(400).json({ success: false, message: 'Incorrect OTP' });
@@ -330,6 +337,11 @@ exports.validatePasswordStrength = (req, res) => {
     errors,
     strength: errors.length === 0 ? 'strong' : errors.length <= 2 ? 'medium' : 'weak',
   });
+};
+
+exports.logout = (req, res) => {
+  res.clearCookie('lexassist_session', { httpOnly:true, secure:process.env.NODE_ENV === 'production', sameSite:'lax', path:'/' });
+  res.json({ success:true });
 };
 
 // ── @route POST /api/auth/admin-login ─────────────────────────

@@ -105,6 +105,8 @@
   <script>
     Auth.guard(['citizen','lawyer','admin']);
     let allCases = [];
+    const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const caseStatus=value=>{const slug=String(value||'').toLowerCase().replace(/\s+/g,'-');return ['pending','active','on-hold','closed','dismissed','appeal'].includes(slug)?slug:'pending';};
 
     const renderCases = (cases) => {
       const el = document.getElementById('casesList');
@@ -119,26 +121,26 @@
         return `<div class="case-card" onclick="openDetail('${c._id}')">
           <div class="case-card-top">
             <div>
-              <div class="case-number">${c.caseNumber}</div>
-              <div class="case-title">${c.title}</div>
+              <div class="case-number">${esc(c.caseNumber)}</div>
+              <div class="case-title">${esc(c.title)}</div>
               <div class="case-meta">
-                <span>⚖️ ${c.caseType}</span>
-                ${c.court?`<span>🏛️ ${c.court}</span>`:''}
+                <span>⚖️ ${esc(c.caseType)}</span>
+                ${c.court?`<span>🏛️ ${esc(c.court)}</span>`:''}
                 ${c.nextHearingDate?`<span>📅 ${DateUtils.format(c.nextHearingDate)}</span>`:''}
               </div>
             </div>
             <div class="case-badges">
               ${Priority.badge(c.priority)}
-              <span class="badge badge-${(c.status||'').toLowerCase().replace(' ','-')}">${c.status}</span>
+              <span class="badge badge-${caseStatus(c.status)}">${esc(c.status)}</span>
             </div>
           </div>
           <div class="progress-wrap">
             <div class="progress-labels"><span>Progress</span><span>${done}/${total} · ${pct}%</span></div>
             <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
-            <div class="stages-dots">${(c.stages||[]).map((s,i)=>`<div class="stage-dot ${s.isCompleted?'done':i===done?'current':''}" title="${s.name}"></div>`).join('')}</div>
+            <div class="stages-dots">${(c.stages||[]).map((s,i)=>`<div class="stage-dot ${s.isCompleted?'done':i===done?'current':''}" title="${esc(s.name)}"></div>`).join('')}</div>
           </div>
-          ${c.priorityReason?`<div class="priority-reason" style="color:${Priority.color(c.priority)}">⏰ ${c.priorityReason}</div>`:''}
-          ${(c.requiredActions||[]).length?`<div class="required-actions"><h5>Required Actions</h5><ul>${c.requiredActions.map(a=>`<li>${a}</li>`).join('')}</ul></div>`:''}
+          ${c.priorityReason?`<div class="priority-reason" style="color:${Priority.color(c.priority)}">⏰ ${esc(c.priorityReason)}</div>`:''}
+          ${(c.requiredActions||[]).length?`<div class="required-actions"><h5>Required Actions</h5><ul>${c.requiredActions.map(a=>`<li>${esc(a)}</li>`).join('')}</ul></div>`:''}
           <div class="case-actions">
             <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openDetail('${c._id}')">View Timeline</button>
             <a href="/chatbot" class="btn btn-sm btn-dark" onclick="event.stopPropagation()">🤖 Ask AI</a>
@@ -171,7 +173,7 @@
 
     const searchCases = () => {
       const q = document.getElementById('searchInput').value.toLowerCase();
-      renderCases(allCases.filter(c=>c.title.toLowerCase().includes(q)||c.caseNumber.toLowerCase().includes(q)||c.caseType.toLowerCase().includes(q)));
+      renderCases(allCases.filter(c=>[c.title,c.caseNumber,c.caseType].some(value=>String(value||'').toLowerCase().includes(q))));
     };
 
     const openDetail = async (id) => {
@@ -180,9 +182,9 @@
       document.getElementById('detailPanel').classList.add('open');
       document.getElementById('detailContent').innerHTML = `
         <div class="mb-16">
-          <div class="case-number">${c.caseNumber}</div>
-          <h3 style="font-family:'Playfair Display',serif;margin:4px 0">${c.title}</h3>
-          <div class="flex gap-8 mt-8 flex-wrap">${Priority.badge(c.priority)}<span class="badge badge-${(c.status||'').toLowerCase().replace(' ','-')}">${c.status}</span></div>
+          <div class="case-number">${esc(c.caseNumber)}</div>
+          <h3 style="font-family:'Playfair Display',serif;margin:4px 0">${esc(c.title)}</h3>
+          <div class="flex gap-8 mt-8 flex-wrap">${Priority.badge(c.priority)}<span class="badge badge-${caseStatus(c.status)}">${esc(c.status)}</span></div>
         </div>
         <div class="card mb-16">
           <h4 style="margin-bottom:14px">📈 Case Timeline</h4>
@@ -192,14 +194,14 @@
               const isCurr = !s.isCompleted && i===done;
               return `<div class="timeline-item ${s.isCompleted?'completed':isCurr?'active':''}">
                 <div class="timeline-dot"></div>
-                <div class="timeline-title">${s.name}</div>
-                <div class="timeline-desc">${s.description||''}</div>
+                <div class="timeline-title">${esc(s.name)}</div>
+                <div class="timeline-desc">${esc(s.description||'')}</div>
                 ${s.completedAt?`<div class="timeline-date">✅ ${DateUtils.format(s.completedAt)}</div>`:isCurr?'<div class="timeline-date" style="color:var(--navy);font-weight:600">⏳ Current Stage</div>':''}
               </div>`;
             }).join('')}
           </div>
         </div>
-        ${(c.timeline||[]).length?`<div class="card"><h4 style="margin-bottom:12px">📜 Activity Log</h4>${c.timeline.slice(-5).reverse().map(t=>`<div style="padding:7px 0;border-bottom:1px solid var(--ivory-dark);font-size:0.84rem"><div style="font-weight:500;color:var(--navy)">${t.event}</div><div style="font-size:0.72rem;color:var(--muted);margin-top:2px">${DateUtils.format(t.date)}</div></div>`).join('')}</div>`:''}`
+        ${(c.timeline||[]).length?`<div class="card"><h4 style="margin-bottom:12px">📜 Activity Log</h4>${c.timeline.slice(-5).reverse().map(t=>`<div style="padding:7px 0;border-bottom:1px solid var(--ivory-dark);font-size:0.84rem"><div style="font-weight:500;color:var(--navy)">${esc(t.event)}</div><div style="font-size:0.72rem;color:var(--muted);margin-top:2px">${DateUtils.format(t.date)}</div></div>`).join('')}</div>`:''}`
       ;
     };
 

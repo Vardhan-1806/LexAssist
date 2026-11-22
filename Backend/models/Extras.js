@@ -47,6 +47,7 @@ const chatHistorySchema = new mongoose.Schema({
     content:   String,
     timestamp: { type: Date, default:Date.now },
     sources:   [String],
+    evidence:  [{ source:String, excerpt:String, score:Number }],
   }],
 }, { timestamps:true });
 
@@ -59,8 +60,24 @@ const calendarEventSchema = new mongoose.Schema({
   endDate:     Date,
   type:        { type: String, enum:['Hearing','Appointment','Deadline','Reminder','Other'], default:'Other' },
   case:        { type: mongoose.Schema.Types.ObjectId, ref:'Case' },
+  appointment: { type: mongoose.Schema.Types.ObjectId, ref:'Appointment', index:true },
   color:       { type: String, default:'#4f46e5' },
   isAllDay:    { type: Boolean, default:false },
+}, { timestamps:true });
+
+const messageThreadSchema = new mongoose.Schema({
+  participants: [{ type: mongoose.Schema.Types.ObjectId, ref:'User', required:true }],
+  lastMessage: String,
+  lastMessageAt: Date,
+}, { timestamps:true });
+messageThreadSchema.index({ participants:1, lastMessageAt:-1 });
+
+const messageSchema = new mongoose.Schema({
+  thread: { type: mongoose.Schema.Types.ObjectId, ref:'MessageThread', required:true, index:true },
+  sender: { type: mongoose.Schema.Types.ObjectId, ref:'User', required:true },
+  recipient: { type: mongoose.Schema.Types.ObjectId, ref:'User', required:true },
+  body: { type:String, required:true, trim:true, maxlength:4000 },
+  readAt: Date,
 }, { timestamps:true });
 
 module.exports = {
@@ -69,4 +86,6 @@ module.exports = {
   Notification:  mongoose.model('Notification',  notificationSchema),
   ChatHistory:   mongoose.model('ChatHistory',   chatHistorySchema),
   CalendarEvent: mongoose.model('CalendarEvent', calendarEventSchema),
+  MessageThread: mongoose.model('MessageThread', messageThreadSchema),
+  Message:       mongoose.model('Message', messageSchema),
 };

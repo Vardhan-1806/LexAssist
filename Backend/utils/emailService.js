@@ -3,6 +3,8 @@
  * Gmail SMTP via Nodemailer
  */
 const nodemailer = require('nodemailer');
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+exports.escapeHtml=escapeHtml;
 
 let _transporter = null;
 
@@ -12,17 +14,16 @@ const getTransporter = () => {
   const user = process.env.EMAIL_USER?.trim();
   const pass = process.env.EMAIL_PASS?.trim(); // Remove any trailing/leading spaces
 
-  if (!user || !pass || user === 'yourgmail@gmail.com' || user === 'your_gmail@gmail.com') {
-    console.warn('⚠️  Email not configured. Set EMAIL_USER + EMAIL_PASS in .env or Railway Variables.');
+  if (!user || !pass || /example\.com|yourgmail|your_gmail/i.test(user) || /your-smtp-password|replace_with/i.test(pass)) {
+    console.warn('⚠️  Email not configured. Set EMAIL_USER + EMAIL_PASS in the environment.');
     return null;
   }
 
   _transporter = nodemailer.createTransport({
-    host:   'smtp.gmail.com',
-    port:   587,
-    secure: false,
-    auth:   { user, pass }, // Gmail app password - spaces OK
-    tls:    { rejectUnauthorized: false },
+    host:   process.env.EMAIL_HOST || 'smtp.gmail.com',
+    port:   Number(process.env.EMAIL_PORT) || 587,
+    secure: process.env.EMAIL_SECURE === 'true' || Number(process.env.EMAIL_PORT) === 465,
+    auth:   { user, pass },
     connectionTimeout: 10000,
     greetingTimeout:   5000,
   });
@@ -66,15 +67,9 @@ exports.sendEmail = async ({ to, subject, html }) => {
   const t = getTransporter();
 
   if (!t) {
-    // Dev mode — show OTP in console for testing
-    console.log('\n' + '═'.repeat(52));
-    console.log('📧 EMAIL — Not sent (configure EMAIL_PASS in Railway)');
-    console.log(`   TO:      ${to}`);
-    console.log(`   SUBJECT: ${subject}`);
-    // Extract and show OTP clearly
-    const otpMatch = html?.match(/>(\d{4})</);
-    if (otpMatch) console.log(`   🔐 OTP CODE: ${otpMatch[1]} ← Use this to verify`);
-    console.log('═'.repeat(52) + '\n');
+    // Dev mode — never log authentication codes or message contents.
+    if (process.env.NODE_ENV === 'production') return { success:false, error:'Email delivery is not configured' };
+    console.log('📧 Email not sent in development (configure SMTP to deliver messages).');
     return { success: true, dev: true };
   }
 
@@ -84,10 +79,10 @@ exports.sendEmail = async ({ to, subject, html }) => {
       to, subject, html,
       text: html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
     });
-    console.log(`✅ Email sent → ${to} [${info.messageId}]`);
+    console.log(`✅ Email sent [${info.messageId}]`);
     return { success: true, messageId: info.messageId };
   } catch (err) {
-    console.error(`❌ Email FAILED → ${to}: ${err.message}`);
+    console.error(`❌ Email delivery failed: ${err.message}`);
     // Don't throw - return error so app continues
     return { success: false, error: err.message };
   }
@@ -100,7 +95,7 @@ exports.sendOTPEmail = (to, name, otp, purpose = 'registration') =>
     subject: `${otp} — Your LEXASSIST verification code`,
     html: wrap(`
       <h2 style="color:#0d1b35;margin:0 0 6px">Your Verification Code</h2>
-      <p style="color:#64748b;margin:0 0 20px">Hi ${name}, use this 4-digit code to complete your ${purpose}:</p>
+      <p style="color:#64748b;margin:0 0 20px">Hi ${escapeHtml(name)}, use this 6-digit code to complete your ${escapeHtml(purpose)}:</p>
       <div style="text-align:center;margin:24px 0">
         <div style="display:inline-block;background:#f8f5ef;border:2px dashed #c9a84c;border-radius:14px;padding:20px 36px">
           <div style="font-size:3rem;font-weight:900;letter-spacing:12px;color:#0d1b35;font-family:monospace">${otp}</div>
@@ -117,13 +112,13 @@ exports.sendOTPEmail = (to, name, otp, purpose = 'registration') =>
 exports.sendWelcomeEmail = (user) =>
   exports.sendEmail({
     to:      user.email,
-    subject: `🎉 Welcome to LEXASSIST, ${user.name.split(' ')[0]}!`,
+    subject: `🎉 Welcome to LEXASSIST, ${escapeHtml(user.name.split(' ')[0])}!`,
     html: wrap(`
-      <h2 style="color:#0d1b35">Welcome, ${user.name}! 🎉</h2>
+      <h2 style="color:#0d1b35">Welcome, ${escapeHtml(user.name)}! 🎉</h2>
       <div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:14px;border-radius:8px;margin:16px 0">
         <p style="margin:0;color:#16a34a;font-weight:600">✅ Your account is verified and active!</p>
       </div>
-      <p style="color:#64748b">Your User ID: <code style="background:#f1f5f9;padding:2px 8px;border-radius:4px;font-family:monospace;color:#0d1b35">${user.userId || 'Assigned shortly'}</code></p>
+      <p style="color:#64748b">Your User ID: <code style="background:#f1f5f9;padding:2px 8px;border-radius:4px;font-family:monospace;color:#0d1b35">${escapeHtml(user.userId || 'Assigned shortly')}</code></p>
       <p style="color:#64748b">You can now access all LEXASSIST features — AI legal help, case tracking, and lawyer consultation.</p>
       ${user.role === 'lawyer' ? '<div style="background:#fffbeb;border-left:4px solid #f59e0b;padding:12px 16px;border-radius:8px;margin-top:16px"><p style="margin:0;color:#92400e;font-size:0.84rem">⚖️ Your lawyer profile is pending admin verification. You\'ll be notified once approved.</p></div>' : ''}
       <a href="${process.env.CLIENT_URL || 'http://localhost:5000'}/login" style="display:inline-block;background:#c9a84c;color:#0d1b35;padding:12px 24px;border-radius:50px;font-weight:700;text-decoration:none;margin-top:18px">Go to Dashboard →</a>`
@@ -136,7 +131,7 @@ exports.sendLawyerVerifiedEmail = (lawyerEmail, lawyerName) =>
     to:      lawyerEmail,
     subject: '✅ Your LEXASSIST Lawyer Profile is Verified!',
     html: wrap(`
-      <h2 style="color:#0d1b35">🎉 Congratulations, ${lawyerName}!</h2>
+      <h2 style="color:#0d1b35">🎉 Congratulations, ${escapeHtml(lawyerName)}!</h2>
       <div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:14px;border-radius:8px;margin:16px 0">
         <p style="margin:0;color:#16a34a;font-weight:600">✅ Your lawyer profile has been verified by LEXASSIST admin.</p>
       </div>
@@ -152,9 +147,9 @@ exports.sendLawyerRejectedEmail = (lawyerEmail, lawyerName, reason) =>
     subject: '❌ LEXASSIST Lawyer Profile — Action Required',
     html: wrap(`
       <h2 style="color:#0d1b35">Profile Verification Update</h2>
-      <p style="color:#64748b">Dear ${lawyerName}, your lawyer profile requires attention.</p>
+      <p style="color:#64748b">Dear ${escapeHtml(lawyerName)}, your lawyer profile requires attention.</p>
       <div style="background:#fef2f2;border-left:4px solid #dc2626;padding:14px;border-radius:8px;margin:16px 0">
-        <p style="margin:0;color:#dc2626;font-weight:600">Reason: ${reason}</p>
+        <p style="margin:0;color:#dc2626;font-weight:600">Reason: ${escapeHtml(reason)}</p>
       </div>
       <p style="color:#64748b">Please update your profile with the correct information and contact our support team.</p>`
     ),
@@ -169,9 +164,9 @@ exports.sendNewLawyerAlert = (adminEmail, lawyerName, barCouncilId, lawyerEmail)
       <h2 style="color:#0d1b35">⚖️ New Lawyer Registered</h2>
       <p style="color:#64748b">A new lawyer has registered and requires verification:</p>
       <table style="width:100%;border-collapse:collapse;font-size:0.875rem;margin:16px 0">
-        <tr><td style="padding:8px 0;color:#64748b;width:40%">Name</td><td style="font-weight:600;color:#0d1b35">${lawyerName}</td></tr>
-        <tr><td style="padding:8px 0;color:#64748b">Email</td><td style="color:#0d1b35">${lawyerEmail}</td></tr>
-        <tr><td style="padding:8px 0;color:#64748b">Bar Council ID</td><td style="font-family:monospace;color:#0d1b35">${barCouncilId}</td></tr>
+        <tr><td style="padding:8px 0;color:#64748b;width:40%">Name</td><td style="font-weight:600;color:#0d1b35">${escapeHtml(lawyerName)}</td></tr>
+        <tr><td style="padding:8px 0;color:#64748b">Email</td><td style="color:#0d1b35">${escapeHtml(lawyerEmail)}</td></tr>
+        <tr><td style="padding:8px 0;color:#64748b">Bar Council ID</td><td style="font-family:monospace;color:#0d1b35">${escapeHtml(barCouncilId)}</td></tr>
       </table>
       <a href="${process.env.CLIENT_URL || 'http://localhost:5000'}/dashboard/admin" style="display:inline-block;background:#c9a84c;color:#0d1b35;padding:12px 24px;border-radius:50px;font-weight:700;text-decoration:none">Verify in Admin Portal →</a>`
     ),
@@ -181,13 +176,13 @@ exports.sendNewLawyerAlert = (adminEmail, lawyerName, barCouncilId, lawyerEmail)
 exports.sendCaseTimelineUpdate = (citizenEmail, citizenName, caseNumber, stageName, notes) =>
   exports.sendEmail({
     to:      citizenEmail,
-    subject: `📋 Case Update: ${caseNumber} | LEXASSIST`,
+    subject: `📋 Case Update: ${String(caseNumber||'').replace(/[\r\n]/g,' ').slice(0,100)} | LEXASSIST`,
     html: wrap(`
       <h2 style="color:#0d1b35">Case Timeline Updated</h2>
-      <p style="color:#64748b">Hi ${citizenName}, your case <strong>${caseNumber}</strong> has been updated.</p>
+      <p style="color:#64748b">Hi ${escapeHtml(citizenName)}, your case <strong>${escapeHtml(caseNumber)}</strong> has been updated.</p>
       <div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:14px;border-radius:8px;margin:16px 0">
-        <p style="margin:0;color:#16a34a;font-weight:600">✅ Stage Completed: ${stageName}</p>
-        ${notes ? `<p style="margin:8px 0 0;color:#64748b;font-size:0.84rem">Note from your lawyer: ${notes}</p>` : ''}
+        <p style="margin:0;color:#16a34a;font-weight:600">✅ Stage Completed: ${escapeHtml(stageName)}</p>
+        ${notes ? `<p style="margin:8px 0 0;color:#64748b;font-size:0.84rem">Note from your lawyer: ${escapeHtml(notes)}</p>` : ''}
       </div>
       <a href="${process.env.CLIENT_URL || 'http://localhost:5000'}/cases" style="display:inline-block;background:#c9a84c;color:#0d1b35;padding:11px 22px;border-radius:50px;font-weight:700;text-decoration:none;margin-top:14px">View Case →</a>`
     ),
@@ -199,10 +194,10 @@ exports.sendAppointmentConfirmation = async (citizen, lawyer, appointment) => {
   const html = wrap(`
     <h2 style="color:#0d1b35">✅ Court Appointment Confirmed</h2>
     <table style="width:100%;border-collapse:collapse;font-size:0.875rem;margin:16px 0">
-      <tr><td style="padding:7px 0;color:#64748b">Lawyer</td><td style="font-weight:600;color:#0d1b35">${lawyer.name}</td></tr>
+      <tr><td style="padding:7px 0;color:#64748b">Lawyer</td><td style="font-weight:600;color:#0d1b35">${escapeHtml(lawyer.name)}</td></tr>
       <tr><td style="padding:7px 0;color:#64748b">Date</td><td style="font-weight:600;color:#0d1b35">${date}</td></tr>
-      <tr><td style="padding:7px 0;color:#64748b">Time</td><td style="color:#0d1b35">${appointment.timeSlot?.start}</td></tr>
-      <tr><td style="padding:7px 0;color:#64748b">Purpose</td><td style="color:#0d1b35">${appointment.type}</td></tr>
+      <tr><td style="padding:7px 0;color:#64748b">Time</td><td style="color:#0d1b35">${escapeHtml(appointment.timeSlot?.start)}</td></tr>
+      <tr><td style="padding:7px 0;color:#64748b">Purpose</td><td style="color:#0d1b35">${escapeHtml(appointment.type)}</td></tr>
     </table>
     <a href="${process.env.CLIENT_URL || 'http://localhost:5000'}/appointments" style="display:inline-block;background:#c9a84c;color:#0d1b35;padding:11px 22px;border-radius:50px;font-weight:700;text-decoration:none">View Appointments →</a>`
   );
@@ -210,20 +205,31 @@ exports.sendAppointmentConfirmation = async (citizen, lawyer, appointment) => {
   await exports.sendEmail({ to: lawyer.email,  subject: `📅 New Court Booking from ${citizen.name} | LEXASSIST`, html });
 };
 
+exports.sendAppointmentStatusUpdate = (recipient, appointment, status) => {
+  const isRescheduled=status==='Rescheduled';
+  const date=new Date(appointment.date).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',weekday:'long',day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const safeStatus=escapeHtml(status);
+  return exports.sendEmail({
+    to:recipient.email,
+    subject:`${isRescheduled?'Appointment rescheduled':`Appointment ${status.toLowerCase()}`} | LEXASSIST`,
+    html:wrap(`<h2 style="color:#0d1b35">Appointment ${safeStatus}</h2><p style="color:#64748b">Hi ${escapeHtml(recipient.name||'there')}, the appointment is now ${isRescheduled?'scheduled for':'marked'} ${isRescheduled?'':safeStatus.toLowerCase()}.</p><table style="width:100%;border-collapse:collapse;font-size:.875rem;margin:16px 0"><tr><td style="padding:7px 0;color:#64748b">Date and time (IST)</td><td style="font-weight:600;color:#0d1b35">${escapeHtml(date)}</td></tr><tr><td style="padding:7px 0;color:#64748b">Purpose</td><td style="color:#0d1b35">${escapeHtml(appointment.type)}</td></tr></table><a href="${process.env.CLIENT_URL||'http://localhost:5000'}/appointments" style="display:inline-block;background:#c9a84c;color:#0d1b35;padding:11px 22px;border-radius:50px;font-weight:700;text-decoration:none">View appointments →</a>`),
+  });
+};
+
 // ── Hearing Reminder ──────────────────────────────────────────
 exports.sendHearingReminder = (userEmail, userName, caseNumber, caseTitle, court, daysLeft) =>
   exports.sendEmail({
     to:      userEmail,
-    subject: `${daysLeft === 0 ? '🚨 TODAY' : '⏰ Tomorrow'} — Hearing for ${caseNumber} | LEXASSIST`,
+    subject: `${daysLeft === 0 ? '🚨 TODAY' : '⏰ Tomorrow'} — Hearing for ${String(caseNumber||'').replace(/[\r\n]/g,' ').slice(0,100)} | LEXASSIST`,
     html: wrap(`
       <div style="background:#fef2f2;border-left:4px solid #dc2626;border-radius:8px;padding:16px;margin-bottom:20px">
         <h2 style="color:#dc2626;margin:0">${daysLeft === 0 ? '🚨 Court Hearing TODAY!' : '⏰ Court Hearing Tomorrow!'}</h2>
       </div>
-      <p style="color:#64748b">Hi ${userName}, you have an upcoming court hearing.</p>
+      <p style="color:#64748b">Hi ${escapeHtml(userName)}, you have an upcoming court hearing.</p>
       <table style="width:100%;border-collapse:collapse;font-size:0.875rem;margin:16px 0">
-        <tr><td style="padding:7px 0;color:#64748b">Case</td><td style="font-weight:600;color:#0d1b35">${caseTitle}</td></tr>
-        <tr><td style="padding:7px 0;color:#64748b">Case No.</td><td style="color:#0d1b35">${caseNumber}</td></tr>
-        <tr><td style="padding:7px 0;color:#64748b">Court</td><td style="color:#0d1b35">${court || 'As notified'}</td></tr>
+        <tr><td style="padding:7px 0;color:#64748b">Case</td><td style="font-weight:600;color:#0d1b35">${escapeHtml(caseTitle)}</td></tr>
+        <tr><td style="padding:7px 0;color:#64748b">Case No.</td><td style="color:#0d1b35">${escapeHtml(caseNumber)}</td></tr>
+        <tr><td style="padding:7px 0;color:#64748b">Court</td><td style="color:#0d1b35">${escapeHtml(court || 'As notified')}</td></tr>
       </table>
       <a href="${process.env.CLIENT_URL || 'http://localhost:5000'}/cases" style="display:inline-block;background:#c9a84c;color:#0d1b35;padding:11px 22px;border-radius:50px;font-weight:700;text-decoration:none">View Case Details →</a>`
     ),

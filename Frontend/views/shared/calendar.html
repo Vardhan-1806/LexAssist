@@ -108,6 +108,8 @@
     let events       = [];
 
     const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const escHTML=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const calendarType=value=>['Hearing','Appointment','Deadline','Reminder','Other'].includes(value)?value:'Other';
 
     const loadEvents = async () => {
       try {
@@ -138,7 +140,7 @@
         const hasAppointment= dayEvents.some(e=>e.type==='Appointment');
         cells += `<div class="cal-cell ${isToday?'today':''}${hasHearing?' urgent':''}${!hasHearing&&hasAppointment?' has-event':''}" style="${hasHearing?'border-color:var(--danger);background:rgba(220,38,38,0.04)':''}${!hasHearing&&(dayEvents.length>0)?'border-color:var(--gold);background:rgba(201,168,76,0.04)':''}">
           <div class="cal-date">${d}</div>
-          ${dayEvents.slice(0,2).map(e=>`<div class="cal-event event-${e.type}">${e.title}</div>`).join('')}
+          ${dayEvents.slice(0,2).map(e=>`<div class="cal-event event-${calendarType(e.type)}">${escHTML(e.title)}</div>`).join('')}
           ${dayEvents.length>2?`<div style="font-size:0.62rem;color:var(--muted);margin-top:1px">+${dayEvents.length-2}</div>`:''}
         </div>`;
       }
@@ -160,11 +162,11 @@
         const daysLeft = DateUtils.daysUntil(e.startDate);
         return `<div style="padding:10px 0;border-bottom:1px solid var(--ivory-dark)">
           <div style="display:flex;align-items:center;gap:7px;margin-bottom:3px">
-            <span class="cal-event event-${e.type}">${e.type}</span>
+            <span class="cal-event event-${calendarType(e.type)}">${escHTML(e.type)}</span>
             <span style="font-size:0.7rem;color:var(--muted)">${DateUtils.format(d)}</span>
             ${daysLeft<=3?`<span style="font-size:0.68rem;font-weight:700;color:var(--danger)">In ${daysLeft}d</span>`:''}
           </div>
-          <div style="font-size:0.875rem;font-weight:600;color:var(--navy)">${e.title}</div>
+          <div style="font-size:0.875rem;font-weight:600;color:var(--navy)">${escHTML(e.title)}</div>
         </div>`;
       }).join('') : '<div class="text-center text-muted" style="padding:20px">No upcoming events</div>';
     };

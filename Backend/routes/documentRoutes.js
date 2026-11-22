@@ -20,7 +20,7 @@ const storage = multer.diskStorage({
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive:true });
     cb(null, dir);
   },
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${path.basename(file.originalname.replace(/\\/g,'/')).replace(/[^\w.-]/g,'-')}`)
+  filename: (req, file, cb) => cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}-${path.basename(file.originalname.replace(/\\/g,'/')).replace(/[^\w.-]/g,'-')}`)
 });
 const upload = multer({
   storage,
@@ -56,6 +56,15 @@ router.get('/', protect, async (req, res) => {
 router.post('/', protect, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success:false, message:'No file uploaded' });
+
+    if (req.body.caseId) {
+      const legalCase = await Case.findById(req.body.caseId).select('citizen lawyer');
+      const canAttach = legalCase && (req.user.role === 'admin' || legalCase.citizen.toString() === req.user.id || legalCase.lawyer?.toString() === req.user.id);
+      if (!canAttach) {
+        fs.unlinkSync(req.file.path);
+        return res.status(403).json({success:false,message:'That case is not available to your account'});
+      }
+    }
 
     const doc = await Document.create({
       title:        req.body.title || req.file.originalname,
@@ -98,7 +107,7 @@ router.get('/:id', protect, async (req, res) => {
     // Check access
     const ownerId = doc.uploadedBy?._id?.toString() || doc.uploadedBy?.toString();
     const isSharedWithUser = (doc.sharedWith || []).some(userId => userId.toString() === req.user.id);
-    if (ownerId !== req.user.id && !doc.isPublic && !isSharedWithUser) {
+    if (ownerId !== req.user.id && !doc.isPublic && !isSharedWithUser && !await canAccessCaseDocument(doc, req.user)) {
       return res.status(403).json({ success:false, message:'Access denied' });
     }
     res.json({ success:true, data:doc });
@@ -128,7 +137,7 @@ router.get('/:id/file', protect, async (req, res) => {
     if (!doc) return res.status(404).json({ success:false, message:'Document not found' });
     const isOwner = doc.uploadedBy.toString() === req.user.id;
     const isSharedWithUser = (doc.sharedWith || []).some(userId => userId.toString() === req.user.id);
-    if (!isOwner && !doc.isPublic && !isSharedWithUser) {
+    if (!isOwner && !doc.isPublic && !isSharedWithUser && !await canAccessCaseDocument(doc, req.user)) {
       return res.status(403).json({ success:false, message:'Access denied' });
     }
     return sendDocumentFile(doc, req, res);
@@ -168,7 +177,7 @@ router.get('/shared/:token', async (req, res) => {
     if (!doc) return res.status(404).json({ success:false, message:'Invalid or expired share link' });
     if (!doc.shareExpiry || doc.shareExpiry < new Date()) return res.status(410).json({ success:false, message:'Share link has expired' });
 
-    res.json({ success:true, data:{ title:doc.title, fileUrl:`/api/documents/shared/${encodeURIComponent(req.params.token)}/file`, fileType:doc.fileType, fileSize:doc.fileSize, originalName:doc.originalName, uploadedBy:doc.uploadedBy?.name, uploadedAt:doc.createdAt, case:doc.case, expiresAt:doc.shareExpiry } });
+    res.json({ success:true, data:{ title:doc.title, fileUrl:`/api/documents/shared/${encodeURIComponent(req.params.token)}/file`, fileType:doc.fileType, fileSize:doc.fileSize, originalName:doc.originalName, uploadedBy:doc.uploadedBy?.name, uploadedAt:doc.createdAt, expiresAt:doc.shareExpiry } });
   } catch(err) { res.status(500).json({ success:false, message:err.message }); }
 });
 
@@ -200,6 +209,13 @@ router.get('/case/:caseId', protect, async (req, res) => {
 });
 
 module.exports = router;
+
+async function canAccessCaseDocument(doc, user) {
+  if (!doc.case) return false;
+  const legalCase = await Case.findById(doc.case).select('citizen lawyer');
+  if (!legalCase) return false;
+  return user.role === 'admin' || legalCase.citizen.toString() === user.id || legalCase.lawyer?.toString() === user.id;
+}
 
 function sendDocumentFile(doc, req, res) {
   const filePath = documentPath(doc.fileUrl);

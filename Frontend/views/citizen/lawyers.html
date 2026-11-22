@@ -86,9 +86,15 @@
           <label class="form-label">Purpose of Booking</label>
           <select id="bookType" class="form-control" required>
             <option value="">Select purpose</option>
+            <option value="Consultation">💬 General consultation</option>
             <option value="Court Argument">⚖️ Court Argument — Representation in court</option>
             <option value="Court Preparation">📋 Court Preparation — Prepare case strategy</option>
           </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="bookMode">Consultation format</label>
+          <select id="bookMode" class="form-control"><option value="In-Person">In person</option><option value="Online">Online</option><option value="Phone">Phone</option></select>
         </div>
 
         <div class="form-group">
@@ -138,13 +144,14 @@
   </div>
   <script src="/js/app.js"></script>
   <script>
-    Auth.guard();
+    Auth.guard(['citizen']);
     document.getElementById('navName').textContent = Auth.user().name || '';
 
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
     document.getElementById('bookDate').min = tomorrow.toISOString().split('T')[0];
 
     const loadLawyers = async (page=1) => {
+      const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       const params = new URLSearchParams({ page, limit:9 });
       const spec = document.getElementById('filterSpec').value;
       const city = document.getElementById('filterCity').value;
@@ -167,29 +174,30 @@
         document.getElementById('lawyersGrid').innerHTML = d.data.map(l => `
           <div class="lawyer-card">
             <div class="lawyer-header">
-              <div class="lawyer-avatar">${(l.user?.name||'L')[0].toUpperCase()}</div>
+              <div class="lawyer-avatar">${esc((l.user?.name||'L')[0].toUpperCase())}</div>
               <div style="min-width:0">
-                <div class="lawyer-name">${l.user?.name||'Lawyer'}</div>
+                <div class="lawyer-name">${esc(l.user?.name||'Lawyer')}</div>
                 <span class="verified-badge">✓ Verified</span>
                 <div class="stars" style="margin-top:5px">
-                  <span class="stars-text">${'★'.repeat(Math.round(l.aiRating||l.rating||0))}${'☆'.repeat(5-Math.round(l.aiRating||l.rating||0))}</span>
-                  <span class="stars-count">${(l.aiRating||l.rating||0).toFixed(1)} AI Rating (${l.totalReviews||0} reviews)</span>
+                  <span class="stars-text" aria-label="${Number(l.rating||0).toFixed(1)} out of 5">${'★'.repeat(Math.round(l.rating||0))}${'☆'.repeat(5-Math.round(l.rating||0))}</span>
+                  <span class="stars-count">${Number(l.rating||0).toFixed(1)} community rating (${Number(l.totalReviews)||0} reviews)</span>
                 </div>
               </div>
             </div>
-            <div class="spec-tags">${(l.specializations||[]).map(s=>`<span class="spec-tag">${s}</span>`).join('')}</div>
+            <div class="spec-tags">${(l.specializations||[]).map(s=>`<span class="spec-tag">${esc(s)}</span>`).join('')}</div>
             <div class="lawyer-info-row">
               <span>💼 ${l.experience||0} yrs experience</span>
-              ${l.location?.city?`<span>📍 ${l.location.city}, ${l.location.state||''}</span>`:''}
+              ${l.location?.city?`<span>📍 ${esc(l.location.city)}, ${esc(l.location.state||'')}</span>`:''}
             </div>
-            ${l.bio?`<div class="lawyer-bio">${l.bio.slice(0,100)}${l.bio.length>100?'...':''}</div>`:''}
-            ${l.aiRatingBreakdown?.caseSuccessRate ? `<div style="font-size:0.76rem;color:var(--muted);margin-top:4px">📊 ${l.aiRatingBreakdown.caseSuccessRate}% success rate · ${l.closedCases||0} cases closed</div>` : ''}
+            ${l.bio?`<div class="lawyer-bio">${esc(l.bio.slice(0,100))}${l.bio.length>100?'...':''}</div>`:''}
             <div class="lawyer-actions">
-              <button class="btn btn-primary btn-sm" onclick="openBooking('${l.user?._id||l._id}','${(l.user?.name||'Lawyer').replace(/'/g,'')}','${l.user?.phone||''}','${l.user?.email||''}')">📋 Book for Court</button>
-              <button class="btn btn-outline btn-sm" onclick="askAboutLawyer('${(l.user?.name||'Lawyer').replace(/'/g,\'\'')}','${(l.specializations||[]).join(', ')||'law'}','${l.experience||0}')">🤖 Ask AI</button>
+              <button class="btn btn-primary btn-sm book-lawyer" data-id="${esc(l.user?._id||l._id)}" data-name="${esc(l.user?.name||'Lawyer')}" data-phone="${esc(l.user?.phone||'')}" data-email="${esc(l.user?.email||'')}">📋 Book for Court</button>
+              <button class="btn btn-outline btn-sm ask-lawyer" data-id="${esc(l.user?._id||l._id)}" data-name="${esc(l.user?.name||'Lawyer')}" data-specialization="${esc((l.specializations||[]).join(', ')||'law')}" data-experience="${Number(l.experience)||0}" data-rating="${Number(l.rating)||0}">🤖 Ask AI</button>
             </div>
           </div>`).join('');
 
+        document.querySelectorAll('.book-lawyer').forEach(button=>button.addEventListener('click',()=>openBooking(button.dataset.id,button.dataset.name,button.dataset.phone,button.dataset.email)));
+        document.querySelectorAll('.ask-lawyer').forEach(button=>button.addEventListener('click',()=>askAboutLawyer(button.dataset.id,button.dataset.name,button.dataset.specialization,button.dataset.experience,button.dataset.rating)));
         const pages = Math.ceil(d.total/9);
         document.getElementById('pagination').innerHTML = pages > 1
           ? Array.from({length:pages},(_,i)=>`<button onclick="loadLawyers(${i+1})" class="btn btn-sm ${i+1===page?'btn-primary':'btn-outline'}">${i+1}</button>`).join('')
@@ -204,8 +212,8 @@
       document.getElementById('bookingTitle').textContent = `📋 Book ${name} for Court`;
       document.getElementById('slotsGrid').innerHTML = '<div style="grid-column:span 4;color:var(--muted);font-size:0.84rem">Select a date first</div>';
       document.getElementById('selectedSlot').value = '';
-      document.getElementById('contactPhone').innerHTML = phone ? `📞 <strong>${phone}</strong>` : '📞 Contact not provided';
-      document.getElementById('contactEmail').innerHTML = email ? `📧 <strong>${email}</strong>` : '📧 Contact not provided';
+      document.getElementById('contactPhone').textContent = phone ? `📞 ${phone}` : '📞 Contact not provided';
+      document.getElementById('contactEmail').textContent = email ? `📧 ${email}` : '📧 Contact not provided';
       openModal('bookingModal');
     };
 
@@ -242,7 +250,7 @@
           lawyerId: document.getElementById('bookLawyerId').value,
           date:     document.getElementById('bookDate').value,
           timeSlot: { start:slot, end:String(parseInt(slot)+1).padStart(2,'0')+':00' },
-          type, notes: document.getElementById('bookNotes').value
+          type, mode:document.getElementById('bookMode').value, notes: document.getElementById('bookNotes').value
         });
         if (d.success) {
           closeModal('bookingModal');
@@ -252,20 +260,6 @@
       } catch(err) { Toast.show('Server error','danger'); }
       btn.innerHTML='Confirm Court Booking →'; btn.disabled=false;
     });
-
-    // Ask AI about a specific lawyer
-    const askAboutLawyer = (name, specs, exp) => {
-      const prompts = [
-        `What type of cases does a ${specs} lawyer handle?`,
-        `How do I prepare for a ${specs} court case?`,
-        `What documents do I need for a ${specs} case?`,
-        `What questions should I ask my ${specs} lawyer?`,
-        `How long does a typical ${specs} case take in India?`,
-      ];
-      const encoded = encodeURIComponent(JSON.stringify({ lawyerName: name, specs, exp, prompts }));
-      window.location.href = `/chatbot?lawyer=${encoded}`;
-    };
-
 
     let currentLawyerCtx = {};
 
@@ -284,9 +278,8 @@
         `What are my rights in a ${specs.split(',')[0]} case?`,
       ];
 
-      document.getElementById('suggestedPrompts').innerHTML = prompts.map(p =>
-        `<button onclick="askLawyerAI(\`${p}\`)" class="btn btn-outline btn-sm" style="text-align:left;padding:9px 14px;font-size:0.82rem;justify-content:flex-start">${p}</button>`
-      ).join('');
+      const promptRoot=document.getElementById('suggestedPrompts');promptRoot.replaceChildren();
+      prompts.forEach(prompt=>{const button=document.createElement('button');button.className='btn btn-outline btn-sm';button.style.cssText='text-align:left;padding:9px 14px;font-size:0.82rem;justify-content:flex-start';button.textContent=prompt;button.addEventListener('click',()=>askLawyerAI(prompt));promptRoot.append(button);});
 
       openModal('askAIModal');
     };
@@ -303,7 +296,8 @@
           sessionId: 'lawyer-inquiry-' + currentLawyerCtx.lawyerId
         });
         if (d.success) {
-          ans.innerHTML = d.data.answer.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+          ans.textContent = d.data.answer;
+          ans.style.whiteSpace='pre-wrap';
         } else {
           ans.innerHTML = 'Unable to get answer. <a href="/chatbot">Try full chatbot →</a>';
         }

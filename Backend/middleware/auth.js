@@ -5,10 +5,20 @@ const User = require('../models/User');
 exports.protect = async (req, res, next) => {
   let token;
 
+  // Parse the signed session cookie without requiring a second cookie parser dependency.
+  if (!req.cookies) {
+    req.cookies = {};
+    (req.headers.cookie || '').split(';').filter(Boolean).forEach(part => {
+      const index = part.indexOf('=');
+      if (index < 0) return;
+      try { req.cookies[decodeURIComponent(part.slice(0,index).trim())] = decodeURIComponent(part.slice(index+1).trim()); } catch (_) {}
+    });
+  }
+
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
-  } else if (req.cookies && req.cookies.token) {
-    token = req.cookies.token;
+  } else if (req.cookies && (req.cookies.lexassist_session || req.cookies.token)) {
+    token = req.cookies.lexassist_session || req.cookies.token;
   }
 
   if (!token) return res.status(401).json({ success: false, message: 'Not authorized – no token' });

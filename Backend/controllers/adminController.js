@@ -7,7 +7,9 @@ const User        = require('../models/User');
 const Lawyer      = require('../models/Lawyer');
 const Case        = require('../models/Case');
 const Appointment = require('../models/Appointment');
-const { sendLawyerVerifiedEmail, sendLawyerRejectedEmail, sendEmail } = require('../utils/emailService');
+const fs=require('fs');
+const {credentialPath}=require('../utils/uploadStorage');
+const { sendLawyerVerifiedEmail, sendLawyerRejectedEmail, sendEmail, escapeHtml } = require('../utils/emailService');
 
 // @route GET /api/admin/stats
 exports.getDashboardStats = async (req, res) => {
@@ -17,7 +19,7 @@ exports.getDashboardStats = async (req, res) => {
       Lawyer.countDocuments({ isVerified:true }),
       Case.countDocuments(),
       Appointment.countDocuments(),
-      Lawyer.countDocuments({ isVerified:false }),
+      Lawyer.countDocuments({ isVerified:false,isRejected:false }),
       User.countDocuments(),
       Lawyer.countDocuments(),
     ]);
@@ -33,7 +35,7 @@ exports.getDashboardStats = async (req, res) => {
 // @route GET /api/admin/lawyers/pending
 exports.getPendingLawyers = async (req, res) => {
   try {
-    const lawyers = await Lawyer.find({ isVerified:false })
+    const lawyers = await Lawyer.find({ isVerified:false,isRejected:false })
       .populate('user','name email phone createdAt isActive')
       .sort('-createdAt');
     res.json({ success:true, count:lawyers.length, data:lawyers });
@@ -74,20 +76,35 @@ exports.getLawyerDetails = async (req, res) => {
   } catch(err) { res.status(500).json({ success:false, message:err.message }); }
 };
 
+exports.getLawyerCredential=async(req,res)=>{
+  try{
+    const lawyer=await Lawyer.findById(req.params.id).select('credentialDocuments');
+    if(!lawyer)return res.status(404).json({success:false,message:'Lawyer profile not found'});
+    const credential=lawyer.credentialDocuments.id(req.params.credentialId);
+    if(!credential)return res.status(404).json({success:false,message:'Credential document not found'});
+    const filePath=credentialPath(credential.fileName);
+    if(!fs.existsSync(filePath))return res.status(404).json({success:false,message:'Credential file is no longer available'});
+    res.set({'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox",'Content-Disposition':`inline; filename="credential${credential.fileName.slice(credential.fileName.lastIndexOf('.'))}"`});
+    return res.type(credential.fileType).sendFile(filePath);
+  }catch(err){res.status(500).json({success:false,message:'Could not open credential document'});}
+};
+
 // @route PUT /api/admin/lawyers/:id/verify
 exports.verifyLawyer = async (req, res) => {
   try {
     const lawyer = await Lawyer.findById(req.params.id).populate('user','name email');
     if (!lawyer) return res.status(404).json({ success:false, message:'Lawyer not found' });
+    if (!(lawyer.credentialDocuments||[]).length) return res.status(400).json({success:false,message:'Review at least one Bar Council credential document before verifying this profile'});
 
     lawyer.isVerified   = true;
     lawyer.isRejected   = false;
     lawyer.verifiedAt   = new Date();
     lawyer.rejectedAt   = undefined;
     lawyer.rejectReason = undefined;
+    lawyer.verificationHistory.push({action:'verified',by:req.user.id,reason:'Credential documents reviewed'});
     await lawyer.save();
 
-    await sendLawyerVerifiedEmail({ email: lawyer.user.email }, lawyer.user.name).catch(console.error);
+    await sendLawyerVerifiedEmail(lawyer.user.email, lawyer.user.name).catch(console.error);
 
     res.json({ success:true, message:'Lawyer verified and notified', data:lawyer });
   } catch(err) { res.status(500).json({ success:false, message:err.message }); }
@@ -97,7 +114,7 @@ exports.verifyLawyer = async (req, res) => {
 exports.rejectLawyer = async (req, res) => {
   try {
     const { reason } = req.body;
-    if (!reason) return res.status(400).json({ success:false, message:'Rejection reason is required' });
+    if (typeof reason!=='string'||!reason.trim()||reason.length>500) return res.status(400).json({ success:false, message:'Enter a rejection reason up to 500 characters' });
 
     const lawyer = await Lawyer.findById(req.params.id).populate('user','name email');
     if (!lawyer) return res.status(404).json({ success:false, message:'Lawyer not found' });
@@ -105,10 +122,11 @@ exports.rejectLawyer = async (req, res) => {
     lawyer.isVerified   = false;
     lawyer.isRejected   = true;
     lawyer.rejectedAt   = new Date();
-    lawyer.rejectReason = reason;
+    lawyer.rejectReason = reason.trim();
+    lawyer.verificationHistory.push({action:'rejected',by:req.user.id,reason:lawyer.rejectReason});
     await lawyer.save();
 
-    await sendLawyerRejectedEmail({ email: lawyer.user.email }, lawyer.user.name, reason).catch(console.error);
+    await sendLawyerRejectedEmail(lawyer.user.email, lawyer.user.name, lawyer.rejectReason).catch(console.error);
 
     res.json({ success:true, message:'Lawyer rejected and notified' });
   } catch(err) { res.status(500).json({ success:false, message:err.message }); }
@@ -143,7 +161,7 @@ exports.toggleUserActive = async (req, res) => {
       subject: `Your LEXASSIST account has been ${user.isActive ? 'activated' : 'deactivated'}`,
       html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:28px">
         <h2 style="color:#0d1b35">Account ${user.isActive ? 'Activated' : 'Deactivated'}</h2>
-        <p style="color:#64748b">Hi ${user.name}, your LEXASSIST account has been <strong>${user.isActive ? 'activated' : 'deactivated'}</strong> by an administrator.</p>
+        <p style="color:#64748b">Hi ${escapeHtml(user.name)}, your LEXASSIST account has been <strong>${user.isActive ? 'activated' : 'deactivated'}</strong> by an administrator.</p>
         ${user.isActive ? '<p style="color:#64748b">You can now log in and use the platform.</p>' : '<p style="color:#64748b">If you believe this is a mistake, please contact support.</p>'}
       </div>`
     }).catch(console.error);
@@ -164,7 +182,7 @@ exports.deleteUser = async (req, res) => {
       subject: 'Your LEXASSIST account has been removed',
       html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:28px">
         <h2 style="color:#0d1b35">Account Removed</h2>
-        <p style="color:#64748b">Hi ${user.name}, your LEXASSIST account has been permanently removed by an administrator. If you believe this is a mistake, please contact support.</p>
+        <p style="color:#64748b">Hi ${escapeHtml(user.name)}, your LEXASSIST account has been permanently removed by an administrator. If you believe this is a mistake, please contact support.</p>
       </div>`
     }).catch(console.error);
 
@@ -194,6 +212,10 @@ exports.getAnalytics = async (req, res) => {
 exports.broadcastNotification = async (req, res) => {
   try {
     const { title, message, role, specificEmail } = req.body;
+    if(typeof title!=='string'||!title.trim()||title.length>150||/[\r\n]/.test(title)||typeof message!=='string'||!message.trim()||message.length>5000)
+      return res.status(400).json({success:false,message:'Enter a subject up to 150 characters and a message up to 5,000 characters'});
+    if(role&&!['citizen','lawyer'].includes(role))return res.status(400).json({success:false,message:'Choose a supported audience'});
+    if(specificEmail&&typeof specificEmail!=='string')return res.status(400).json({success:false,message:'Enter a valid email address'});
 
     let users = [];
     if (specificEmail) {
@@ -216,8 +238,8 @@ exports.broadcastNotification = async (req, res) => {
               <div style="color:#c9a84c;font-size:1.4rem;font-weight:900">LEX<span style="color:#fff">ASSIST</span></div>
             </div>
             <div style="background:#fff;padding:28px;border-radius:0 0 12px 12px;box-shadow:0 4px 20px rgba(0,0,0,0.08)">
-              <h2 style="color:#0d1b35">${title}</h2>
-              <p style="color:#64748b;line-height:1.7;white-space:pre-wrap">${message}</p>
+              <h2 style="color:#0d1b35">${escapeHtml(title)}</h2>
+              <p style="color:#64748b;line-height:1.7;white-space:pre-wrap">${escapeHtml(message)}</p>
               <hr style="border:none;border-top:1px solid #f1f5f9;margin:20px 0">
               <p style="color:#94a3b8;font-size:0.75rem;text-align:center">© 2024 LEXASSIST | Free Legal Aid: <a href="tel:15100" style="color:#c9a84c">15100</a></p>
             </div>

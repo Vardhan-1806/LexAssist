@@ -84,7 +84,20 @@
       <button class="tab" onclick="sw('plans',this)">💳 Subscription Plans</button>
       <button class="tab" onclick="sw('broadcast',this)">📢 Broadcast</button>
       <button class="tab" onclick="sw('analytics',this)">📊 Analytics</button>
+      <button class="tab" onclick="sw('knowledge',this)">📚 Knowledge Base</button>
       <button class="tab" onclick="sw('roadmap',this)">🗺️ Roadmap</button>
+    </div>
+
+    <div class="pane" id="pane-knowledge">
+      <div class="flex-between mb-16"><div><h3>📚 Legal knowledge base</h3><p>Manage the local TXT and Markdown files used by Lexi’s TF-IDF retrieval.</p></div><button class="btn btn-outline btn-sm" type="button" onclick="loadKnowledgeBase()">Refresh</button></div>
+      <div id="knowledgeStats" class="grid-3"><div class="card">Loading knowledge-base details…</div></div>
+      <form id="knowledgeUploadForm" class="card kb-upload-form">
+        <div><h4>Add a legal text source</h4><p class="text-muted">TXT or Markdown, up to 2 MB. The text is added to the local retrieval library and indexed immediately.</p></div>
+        <label class="form-label" for="knowledgeSource">Source file</label><input class="form-control" type="file" id="knowledgeSource" accept=".txt,.md,text/plain,text/markdown" required>
+        <button class="btn btn-primary btn-sm" id="knowledgeUploadButton" type="submit">Add and index source</button>
+      </form>
+      <div class="card mt-16"><div class="flex-between mb-12"><h4>Source files</h4><span class="text-muted" id="knowledgeSourceCount"></span></div><div class="table-wrap" style="overflow-x:auto"><table><thead><tr><th>Source</th><th>Type</th><th>Size</th><th>Passages</th><th>Index status</th><th>Actions</th></tr></thead><tbody id="knowledgeSources"><tr><td colspan="6">Loading sources…</td></tr></tbody></table></div><div id="knowledgePreview" class="kb-preview" hidden></div></div>
+      <p class="text-muted" style="margin-top:12px;font-size:.82rem">Bundled sources are read-only. Uploaded text is indexed synchronously for TF-IDF search; this app does not use embeddings or a separate extraction queue.</p>
     </div>
 
     <!-- TAB: VERIFICATION -->
@@ -247,7 +260,7 @@
           <div class="rm-dot" style="background:var(--success)"></div>
           <div class="rm-badge badge-live">● LIVE NOW</div>
           <h4 style="color:var(--navy);margin:4px 0">Phase 1 — Foundation (2024)</h4>
-          <p style="color:var(--muted);font-size:0.84rem">Free platform for all citizens and lawyers. Core features: AI chatbot powered by TF-IDF RAG on Indian legal database, lawyer verification by admin, case management with timeline tracking, court appointment booking, document generation (FIR, Notice, Bail), email notifications via Gmail SMTP, individual calendars with hearing reminders.</p>
+          <p style="color:var(--muted);font-size:0.84rem">Platform features include a local text-library search assistant, lawyer verification by admin, case management with timeline tracking, appointment booking, document templates, email notifications, and calendar reminders. Legal sources and templates require current qualified review before production use.</p>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
             <span class="badge badge-active">AI Chatbot</span><span class="badge badge-active">Case Tracking</span><span class="badge badge-active">Lawyer Verification</span><span class="badge badge-active">Email OTP</span><span class="badge badge-active">Document Generator</span>
           </div>
@@ -309,6 +322,7 @@
   <script src="/js/app.js"></script>
   <script>
     Auth.guard(['admin']);
+    const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     const user = Auth.user();
     document.getElementById('adminBadge').textContent = (user.name||'A')[0].toUpperCase();
 
@@ -322,7 +336,58 @@
       if(tab==='alllawyers')   loadAllLawyers();
       if(tab==='users')        loadUsers();
       if(tab==='analytics')    loadAnalytics();
+      if(tab==='knowledge')    loadKnowledgeBase();
     };
+
+    const loadKnowledgeBase = async () => {
+      const root=document.getElementById('knowledgeStats');
+      root.replaceChildren(Object.assign(document.createElement('div'),{className:'card',textContent:'Loading current source details…'}));
+      try {
+        const result=await API.get('/api/chatbot/sources');
+        if(!result.success) throw new Error(result.message||'Could not load knowledge-base details');
+        const {stats,sources}=result.data, cards=[];
+        [['Text sources',stats.files],['Searchable passages',stats.chunks],['Source size',`${stats.sizeMB} MB`],['Last loaded',stats.lastLoad]].forEach(([label,value])=>{
+          const card=document.createElement('div');card.className='stat-card';const copy=document.createElement('div');const metric=document.createElement('div');metric.className='stat-value';metric.textContent=String(value??'—');const caption=document.createElement('div');caption.className='stat-label';caption.textContent=label;copy.append(metric,caption);card.append(copy);cards.push(card);
+        });
+        root.replaceChildren(...cards);
+        document.getElementById('knowledgeSourceCount').textContent=`${sources.length} sources`;
+        const table=document.getElementById('knowledgeSources');table.replaceChildren();
+        if(!sources.length){const row=table.insertRow();const cell=row.insertCell();cell.colSpan=6;cell.textContent='No legal source files are available.';}
+        sources.forEach(source=>{
+          const row=table.insertRow();
+          [source.name,source.kind==='uploaded'?'Uploaded':'Bundled',`${(source.sizeBytes/1024).toFixed(1)} KB`,source.chunks,source.status].forEach(value=>{const cell=row.insertCell();cell.textContent=String(value);});
+          const actions=row.insertCell();
+          if(source.kind==='uploaded'){
+            const preview=document.createElement('button');preview.className='btn btn-outline btn-sm';preview.type='button';preview.textContent='Preview';preview.addEventListener('click',()=>previewKnowledgeSource(source.id.split('/').pop()));actions.append(preview,' ');
+            const remove=document.createElement('button');remove.className='btn btn-danger btn-sm';remove.type='button';remove.textContent='Remove';remove.addEventListener('click',()=>removeKnowledgeSource(source.id.split('/').pop()));actions.append(remove);
+          } else actions.textContent='Read-only';
+        });
+      } catch(error) { root.replaceChildren(Object.assign(document.createElement('div'),{className:'card',textContent:error.message})); }
+    };
+
+    const previewKnowledgeSource=async filename=>{
+      const panel=document.getElementById('knowledgePreview');panel.hidden=false;panel.replaceChildren(Object.assign(document.createElement('p'),{textContent:'Loading source preview…'}));
+      const result=await API.get(`/api/chatbot/sources/${encodeURIComponent(filename)}/preview`);
+      if(!result.success){panel.textContent=result.message||'Could not load this source.';return;}
+      const heading=document.createElement('h4');heading.textContent=result.data.name;
+      const content=document.createElement('pre');content.textContent=result.data.content+(result.data.truncated?'\n\n… Preview limited to the first 12,000 characters.':'');
+      const close=document.createElement('button');close.className='btn btn-outline btn-sm';close.type='button';close.textContent='Close preview';close.addEventListener('click',()=>{panel.hidden=true;panel.replaceChildren();});panel.replaceChildren(heading,content,close);
+    };
+    const removeKnowledgeSource=async filename=>{
+      if(!confirm(`Remove the uploaded source “${filename}” from Lexi’s retrieval library?`))return;
+      const result=await API.delete(`/api/chatbot/sources/${encodeURIComponent(filename)}`);
+      if(!result.success){Toast.show(result.message||'Could not remove source.','danger');return;}
+      Toast.show('Source removed and search index refreshed.','success');loadKnowledgeBase();
+    };
+    document.getElementById('knowledgeUploadForm').addEventListener('submit',async event=>{
+      event.preventDefault();const file=document.getElementById('knowledgeSource').files[0];if(!file)return;
+      const button=document.getElementById('knowledgeUploadButton');button.disabled=true;button.textContent='Adding and indexing…';
+      const form=new FormData();form.append('source',file);
+      const result=await fetch('/api/chatbot/sources',{method:'POST',body:form,credentials:'same-origin'}).then(response=>response.json()).catch(()=>({success:false,message:'Connection error while adding source.'}));
+      button.disabled=false;button.textContent='Add and index source';
+      if(!result.success){Toast.show(result.message||'Could not add source.','danger');return;}
+      document.getElementById('knowledgeUploadForm').reset();Toast.show(`${result.data.chunks} passages added to local search.`, 'success');loadKnowledgeBase();
+    });
 
     // ── Bar chart ─────────────────────────────────────────────
     const barChart = (id, data) => {
@@ -330,7 +395,7 @@
       if(!data?.length){el.innerHTML='<p class="text-muted">No data yet</p>';return;}
       const max=Math.max(...data.map(d=>d.count));
       el.innerHTML=data.map(d=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
-        <div style="width:110px;font-size:0.76rem;color:var(--muted);text-align:right;flex-shrink:0">${d._id||'Unknown'}</div>
+        <div style="width:110px;font-size:0.76rem;color:var(--muted);text-align:right;flex-shrink:0">${esc(d._id||'Unknown')}</div>
         <div style="flex:1;height:7px;background:var(--ivory-dark);border-radius:4px;overflow:hidden">
           <div style="height:100%;width:${Math.round((d.count/max)*100)}%;background:linear-gradient(90deg,var(--navy),var(--gold));border-radius:4px"></div>
         </div>
@@ -362,27 +427,31 @@
         el.innerHTML=d.data.map(l=>`
           <div class="lcrd" id="lcard-${l._id}">
             <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
-              <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--navy),var(--navy-light));display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;color:var(--gold);flex-shrink:0">${(l.user?.name||'L')[0]}</div>
+              <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--navy),var(--navy-light));display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;color:var(--gold);flex-shrink:0">${esc((l.user?.name||'L')[0])}</div>
               <div style="flex:1;min-width:0">
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                  <h3 style="margin:0;font-size:1rem;color:var(--navy)">${l.user?.name||'Unknown'}</h3>
+                  <h3 style="margin:0;font-size:1rem;color:var(--navy)">${esc(l.user?.name||'Unknown')}</h3>
                   <span class="pill pill-pending">⏳ Pending</span>
                 </div>
-                <div style="color:var(--muted);font-size:0.82rem">${l.user?.email||''} · 📞 ${l.user?.phone||'—'}</div>
+                <div style="color:var(--muted);font-size:0.82rem">${esc(l.user?.email||'')} · 📞 ${esc(l.user?.phone||'—')}</div>
                 <div style="color:var(--muted);font-size:0.76rem">Registered: ${DateUtils.format(l.user?.createdAt)}</div>
               </div>
             </div>
             <div class="lmeta">
-              <div><div class="ml">Bar Council ID</div><div class="mv">${l.barCouncilId||'—'}</div></div>
-              <div><div class="ml">Specializations</div><div class="mv">${(l.specializations||[]).join(', ')||'—'}</div></div>
+              <div><div class="ml">Bar Council ID</div><div class="mv">${esc(l.barCouncilId||'—')}</div></div>
+              <div><div class="ml">Specializations</div><div class="mv">${esc((l.specializations||[]).join(', ')||'—')}</div></div>
               <div><div class="ml">Experience</div><div class="mv">${l.experience||0} years</div></div>
-              <div><div class="ml">Location</div><div class="mv">${[l.location?.city,l.location?.state].filter(Boolean).join(', ')||'—'}</div></div>
-              <div><div class="ml">Languages</div><div class="mv">${(l.languages||[]).join(', ')||'—'}</div></div>
-              <div><div class="ml">Education</div><div class="mv">${(l.education||[]).map(e=>e.degree).join(', ')||'—'}</div></div>
+              <div><div class="ml">Location</div><div class="mv">${esc([l.location?.city,l.location?.state].filter(Boolean).join(', ')||'—')}</div></div>
+              <div><div class="ml">Languages</div><div class="mv">${esc((l.languages||[]).join(', ')||'—')}</div></div>
+              <div><div class="ml">Education</div><div class="mv">${esc((l.education||[]).map(e=>e.degree).join(', ')||'—')}</div></div>
             </div>
-            ${l.bio?`<div style="background:var(--ivory);border-radius:var(--radius);padding:11px 14px;font-size:0.84rem;color:var(--muted);margin-bottom:10px"><strong style="color:var(--navy)">Bio: </strong>${l.bio}</div>`:''}
+            <div style="margin:10px 0;padding:12px;background:var(--ivory);border-radius:var(--radius)">
+              <strong>Credential documents (${(l.credentialDocuments||[]).length})</strong>
+              ${(l.credentialDocuments||[]).map(doc=>`<div style="margin-top:6px"><a href="/api/admin/lawyers/${encodeURIComponent(l._id)}/credentials/${encodeURIComponent(doc._id)}" target="_blank" rel="noopener noreferrer">${esc(doc.originalName||'Credential file')}</a> · ${DateUtils.format(doc.uploadedAt)} · ${Math.ceil((doc.fileSize||0)/1024)} KB</div>`).join('')||'<div class="text-muted" style="margin-top:6px">No credential documents submitted yet.</div>'}
+            </div>
+            ${l.bio?`<div style="background:var(--ivory);border-radius:var(--radius);padding:11px 14px;font-size:0.84rem;color:var(--muted);margin-bottom:10px"><strong style="color:var(--navy)">Bio: </strong>${esc(l.bio)}</div>`:''}
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-              <button class="btn btn-primary btn-sm" onclick="doVerify('${l._id}',this)">✅ Verify & Notify</button>
+              <button class="btn btn-primary btn-sm" onclick="doVerify('${l._id}',this)" ${(l.credentialDocuments||[]).length?'':'disabled title="A credential document is required"'}>✅ Verify & Notify</button>
               <button class="btn btn-danger btn-sm" onclick="openReject('${l._id}')">❌ Reject</button>
             </div>
           </div>`).join('');
@@ -421,14 +490,14 @@
           const pill={verified:'pill-ok',pending:'pill-pending',rejected:'pill-bad'}[st];
           const label={verified:'✅ Verified',pending:'⏳ Pending',rejected:'❌ Rejected'}[st];
           return `<tr>
-            <td><div style="font-weight:600;color:var(--navy)">${l.user?.name||'—'}</div><div style="font-size:0.74rem;color:var(--muted)">${l.user?.email||''}</div></td>
-            <td style="font-family:monospace;font-size:0.8rem">${l.barCouncilId||'—'}</td>
-            <td style="font-size:0.82rem">${(l.specializations||[]).join(', ')||'—'}</td>
+            <td><div style="font-weight:600;color:var(--navy)">${esc(l.user?.name||'—')}</div><div style="font-size:0.74rem;color:var(--muted)">${esc(l.user?.email||'')}</div></td>
+            <td style="font-family:monospace;font-size:0.8rem">${esc(l.barCouncilId||'—')}</td>
+            <td style="font-size:0.82rem">${esc((l.specializations||[]).join(', ')||'—')}</td>
             <td>${l.experience||0}y</td>
             <td><span class="pill ${pill}">${label}</span></td>
             <td style="font-size:0.76rem">${DateUtils.format(l.createdAt)}</td>
             <td><div style="display:flex;gap:5px">
-              ${!l.isVerified&&!l.isRejected?`<button class="btn btn-primary btn-sm" onclick="doVerify('${l._id}',this)">Verify</button>`:''}
+              ${!l.isVerified&&!l.isRejected?`<button class="btn btn-primary btn-sm" onclick="doVerify('${l._id}',this)" ${(l.credentialDocuments||[]).length?'':'disabled title="A credential document is required"'}>Verify</button>`:''}
               ${!l.isRejected?`<button class="btn btn-danger btn-sm" onclick="openReject('${l._id}')">Reject</button>`:''}
               ${l.isRejected?`<button class="btn btn-outline btn-sm" onclick="doVerify('${l._id}',this)">Re-verify</button>`:''}
             </div></td>
@@ -447,8 +516,8 @@
         const p=new URLSearchParams();if(role)p.append('role',role);if(search)p.append('search',search);
         const d=await API.get(`/api/admin/users?${p}`);
         tbody.innerHTML=(d.data||[]).map(u=>`<tr>
-          <td style="font-weight:600;color:var(--navy)">${u.name}</td>
-          <td style="font-size:0.82rem">${u.email}</td>
+          <td style="font-weight:600;color:var(--navy)">${esc(u.name)}</td>
+          <td style="font-size:0.82rem">${esc(u.email)}</td>
           <td><span class="pill ${u.role==='admin'?'pill-ok':u.role==='lawyer'?'pill-pending':'pill-pending'}">${u.role}</span></td>
           <td style="font-size:0.76rem">${DateUtils.format(u.createdAt)}</td>
           <td><span class="pill ${u.isActive?'pill-ok':'pill-bad'}">${u.isActive?'Active':'Inactive'}</span></td>
@@ -472,8 +541,8 @@
         if(st.success&&st.data.recentUsers){
           document.getElementById('recentReg').innerHTML=st.data.recentUsers.map(u=>`
             <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--ivory-dark);font-size:0.84rem">
-              <div><div style="font-weight:600;color:var(--navy)">${u.name}</div><div style="color:var(--muted);font-size:0.74rem">${u.email}</div></div>
-              <span class="pill pill-pending">${u.role}</span>
+              <div><div style="font-weight:600;color:var(--navy)">${esc(u.name)}</div><div style="color:var(--muted);font-size:0.74rem">${esc(u.email)}</div></div>
+              <span class="pill pill-pending">${esc(u.role)}</span>
             </div>`).join('')||'<p class="text-muted">No registrations yet</p>';
         }
       }catch(e){}

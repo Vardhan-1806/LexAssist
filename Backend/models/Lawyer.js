@@ -20,6 +20,8 @@ const lawyerSchema = new mongoose.Schema({
   totalReviews:   { type: Number, default: 0 },
   isVerified:     { type: Boolean, default: false },
   isRejected:     { type: Boolean, default: false },
+  credentialDocuments: [{ originalName:String, fileName:String, fileType:String, fileSize:Number, uploadedAt:{type:Date,default:Date.now} }],
+  verificationHistory: [{ action:{type:String,enum:['verified','rejected','resubmitted']}, by:{type:mongoose.Schema.Types.ObjectId,ref:'User'}, reason:String, createdAt:{type:Date,default:Date.now} }],
   verifiedAt:     Date,
   rejectedAt:     Date,
   rejectReason:   String,

@@ -10,7 +10,20 @@ if (!process.env.MONGO_URI) {
   console.error('❌ MONGO_URI not found in .env!');
   process.exit(1);
 }
-console.log('🔗 Connecting to:', process.env.MONGO_URI.replace(/:([^:@]+)@/, ':****@'));
+if(process.env.NODE_ENV==='production'){
+  console.error('❌ The demo seeder is disabled in production.');process.exit(1);
+}
+if(process.env.ALLOW_DESTRUCTIVE_SEED!=='true'){
+  console.error('❌ Seeding deletes existing demo collections. Set ALLOW_DESTRUCTIVE_SEED=true only for a disposable development database.');process.exit(1);
+}
+if(!process.env.SEED_DEMO_PASSWORD||process.env.SEED_DEMO_PASSWORD.length<12){
+  console.error('❌ Set SEED_DEMO_PASSWORD to a unique value of at least 12 characters.');process.exit(1);
+}
+const databaseHost=(()=>{try{return new URL(process.env.MONGO_URI).hostname;}catch{return'';}})();
+if(!['localhost','127.0.0.1','::1'].includes(databaseHost)&&process.env.ALLOW_REMOTE_DEMO_SEED!=='true'){
+  console.error('❌ Remote database seeding requires explicit ALLOW_REMOTE_DEMO_SEED=true.');process.exit(1);
+}
+console.log('🔗 Connecting to the configured development database.');
 
 // Import models
 const User        = require('../Backend/models/User');
@@ -28,17 +41,15 @@ const seed = async () => {
   console.log('🗑️  Cleared old data');
 
   // Pre-hash all passwords — bypasses pre-save hook double-hash issue
-  const adminHash  = await bcrypt.hash('Admin@123!', 12);
-  const lawyerHash = await bcrypt.hash('Lawyer@123!', 12);
-  const userHash   = await bcrypt.hash('User@123!', 12);
+  const demoHash  = await bcrypt.hash(process.env.SEED_DEMO_PASSWORD, 12);
 
   // Use insertMany (skips pre-save middleware - no double hashing)
   const users = await User.insertMany([
-    { name:'Admin LEXASSIST', email:'admin@lexassist.com', password:adminHash, role:'admin', phone:'9000000000', isVerified:true, isActive:true, userId:'LEX-ADM-00001' },
-    { name:'Adv. Priya Sharma', email:'priya@lexassist.com', password:lawyerHash, role:'lawyer', phone:'9876543210', isVerified:true, isActive:true, userId:'LEX-LAW-00001' },
-    { name:'Adv. Rajan Mehta',  email:'rajan@lexassist.com', password:lawyerHash, role:'lawyer', phone:'9876543211', isVerified:true, isActive:true, userId:'LEX-LAW-00002' },
-    { name:'Rajesh Kumar', email:'rajesh@example.com', password:userHash, role:'citizen', phone:'9000000001', isVerified:true, isActive:true, userId:'LEX-CIT-00001' },
-    { name:'Meena Patel',  email:'meena@example.com',  password:userHash, role:'citizen', phone:'9000000002', isVerified:true, isActive:true, userId:'LEX-CIT-00002' },
+    { name:'Admin LEXASSIST', email:'admin@lexassist.com', password:demoHash, role:'admin', phone:'9000000000', isVerified:true, isActive:true, userId:'LEX-ADM-00001' },
+    { name:'Adv. Priya Sharma', email:'priya@lexassist.com', password:demoHash, role:'lawyer', phone:'9876543210', isVerified:true, isActive:true, userId:'LEX-LAW-00001' },
+    { name:'Adv. Rajan Mehta',  email:'rajan@lexassist.com', password:demoHash, role:'lawyer', phone:'9876543211', isVerified:true, isActive:true, userId:'LEX-LAW-00002' },
+    { name:'Rajesh Kumar', email:'rajesh@example.com', password:demoHash, role:'citizen', phone:'9000000001', isVerified:true, isActive:true, userId:'LEX-CIT-00001' },
+    { name:'Meena Patel',  email:'meena@example.com',  password:demoHash, role:'citizen', phone:'9000000002', isVerified:true, isActive:true, userId:'LEX-CIT-00002' },
   ]);
 
   const [admin, priya, rajan, rajesh, meena] = users;
@@ -74,14 +85,8 @@ const seed = async () => {
     { user:rajesh._id, title:'Appointment with Adv. Priya Sharma', startDate:new Date(Date.now()+2*864e5), type:'Appointment', color:'#c9a84c' },
   ]);
 
-  console.log('\n✅ Database seeded!\n');
-  console.log('─────────────────────────────────────────────');
-  console.log('🛡️  Admin:   admin@lexassist.com  / Admin@123!');
-  console.log('⚖️  Lawyer:  priya@lexassist.com  / Lawyer@123!');
-  console.log('⚖️  Lawyer2: rajan@lexassist.com  / Lawyer@123!');
-  console.log('👨 Citizen: rajesh@example.com   / User@123!');
-  console.log('👩 Citizen: meena@example.com    / User@123!');
-  console.log('─────────────────────────────────────────────\n');
+  console.log('\n✅ Demo data seeded in the explicitly selected development database.');
+  console.log('Demo password is the SEED_DEMO_PASSWORD environment value.');
 
   await mongoose.disconnect();
   process.exit(0);

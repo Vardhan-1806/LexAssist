@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Secure Messages – LEXASSIST</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/premium.css">
+  <style>
+    .messages-layout{display:grid;grid-template-columns:minmax(240px,310px) minmax(0,1fr);gap:18px;min-height:min(680px,calc(100dvh - 190px))}
+    .thread-list{padding:10px;overflow:auto}.thread-button{display:flex;width:100%;gap:12px;padding:13px;border:0;border-radius:12px;background:transparent;text-align:left;color:var(--text);cursor:pointer}
+    .thread-button:hover,.thread-button.active{background:#f0f2f6}.thread-avatar{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:#e9edf3;color:var(--navy);font-weight:700;flex:none}
+    .thread-copy{min-width:0;flex:1}.thread-copy strong,.thread-copy small,.thread-preview{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.thread-copy small,.thread-preview{color:var(--muted);font-size:.76rem}.unread-count{align-self:center;min-width:20px;padding:2px 6px;border-radius:20px;background:var(--navy);color:#fff;text-align:center;font-size:.68rem}
+    .conversation{display:flex;min-height:540px;flex-direction:column;overflow:hidden}.conversation-head{padding:17px 20px;border-bottom:1px solid #e8ebf0}.message-list{display:flex;flex:1;flex-direction:column;gap:12px;overflow:auto;padding:22px}.message-bubble{max-width:min(76%,620px);padding:11px 14px;border:1px solid #e6e9ee;border-radius:15px 15px 15px 4px;background:#fff;color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}.message-bubble.mine{align-self:flex-end;border-color:var(--navy);border-radius:15px 15px 4px 15px;background:var(--navy);color:#fff}.message-time{display:block;margin-top:5px;font-size:.67rem;opacity:.7}.message-form{display:flex;gap:10px;padding:14px;border-top:1px solid #e8ebf0}.message-form textarea{flex:1;min-height:46px;max-height:120px;resize:vertical}
+    @media(max-width:760px){.messages-layout{grid-template-columns:1fr;min-height:auto}.messages-card{max-height:220px}.conversation{min-height:58dvh}.message-bubble{max-width:88%}}
+  </style>
+</head>
+<body>
+  <nav class="navbar"><a href="/" class="navbar-brand">LEX<span>ASSIST</span></a><div class="navbar-actions"><a href="/appointments" class="btn btn-secondary btn-sm">Appointments</a><button class="btn btn-outline btn-sm" type="button" onclick="Auth.logout()">Sign out</button></div></nav>
+  <main class="main-content" style="margin:var(--navbar-h) auto 0;max-width:1280px">
+    <header class="page-header"><h1>Secure messages</h1><p>Keep case and appointment conversations in one private place.</p></header>
+    <div class="messages-layout">
+      <section class="card messages-card" aria-label="Conversations"><div class="flex-between" style="padding:8px 10px 12px"><strong>Conversations</strong><span class="text-muted" id="threadCount"></span></div><div class="thread-list" id="threadList"><p class="text-muted" style="padding:12px">Loading conversations…</p></div></section>
+      <section class="card conversation" aria-label="Selected conversation">
+        <div class="conversation-head"><strong id="conversationTitle">Choose a conversation</strong><p id="conversationHint" style="margin-top:3px;font-size:.82rem">Messages are available to clients and lawyers connected through a case or appointment.</p></div>
+        <div class="message-list" id="messageList" aria-live="polite"><div class="text-muted" style="margin:auto;text-align:center;max-width:350px">Select a conversation to read or send a message.</div></div>
+        <form class="message-form" id="messageForm"><label class="sr-only" for="messageInput">Write a message</label><textarea id="messageInput" class="form-control" maxlength="4000" placeholder="Write a message…" disabled required></textarea><button class="btn btn-primary" id="sendMessage" disabled>Send</button></form>
+      </section>
+    </div>
+  </main>
+  <script src="/js/app.js"></script>
+  <script>
+    Auth.guard(['citizen','lawyer']);
+    const currentUser=Auth.user();
+    let threads=[],activeThread=null,pollTimer;
+    const el=id=>document.getElementById(id);
+    const otherParty=thread=>thread.participants.find(person=>person._id!==currentUser._id);
+    const renderThreads=()=>{
+      const list=el('threadList');el('threadCount').textContent=threads.length?`${threads.length}`:'';
+      list.replaceChildren();
+      if(!threads.length){const empty=document.createElement('p');empty.className='text-muted';empty.style.padding='12px';empty.textContent='No conversations yet. Open an appointment and choose Message to contact the other person.';list.append(empty);return;}
+      threads.forEach(thread=>{const person=otherParty(thread);const button=document.createElement('button');button.type='button';button.className=`thread-button${activeThread?._id===thread._id?' active':''}`;const avatar=document.createElement('span');avatar.className='thread-avatar';avatar.textContent=(person?.name||'U').slice(0,1).toUpperCase();const copy=document.createElement('span');copy.className='thread-copy';const name=document.createElement('strong');name.textContent=person?.name||'Contact';const role=document.createElement('small');role.textContent=person?.role==='lawyer'?'Lawyer':'Citizen';const preview=document.createElement('span');preview.className='thread-preview';preview.textContent=thread.lastMessage||'No messages yet';copy.append(name,role,preview);button.append(avatar,copy);if(thread.unread){const badge=document.createElement('span');badge.className='unread-count';badge.textContent=String(thread.unread);button.append(badge);}button.addEventListener('click',()=>openThread(thread));list.append(button);});
+    };
+    const loadThreads=async()=>{const result=await API.get('/api/messages');if(!result.success)throw new Error(result.message||'Could not load messages');threads=result.data||[];renderThreads();return threads;};
+    const openThread=async thread=>{activeThread=thread;renderThreads();const person=otherParty(thread);el('conversationTitle').textContent=person?.name||'Conversation';el('conversationHint').textContent=`${person?.role==='lawyer'?'Lawyer':'Citizen'} · Messages are private to this conversation.`;el('messageInput').disabled=false;el('sendMessage').disabled=false;await loadMessages();};
+    const loadMessages=async()=>{if(!activeThread)return;const result=await API.get(`/api/messages/${encodeURIComponent(activeThread._id)}`);if(!result.success)return;const list=el('messageList');list.replaceChildren();(result.data||[]).forEach(message=>{const bubble=document.createElement('div');bubble.className=`message-bubble${message.sender?._id===currentUser._id?' mine':''}`;bubble.textContent=message.body;const time=document.createElement('time');time.className='message-time';time.dateTime=message.createdAt;time.textContent=new Date(message.createdAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'});bubble.append(time);list.append(bubble);});list.scrollTop=list.scrollHeight;};
+    const startThread=async recipientId=>{const result=await API.post('/api/messages',{recipientId});if(!result.success)throw new Error(result.message||'You can message this person after a shared case or appointment.');await loadThreads();const thread=threads.find(item=>item._id===result.data._id);if(thread)await openThread(thread);};
+    el('messageForm').addEventListener('submit',async event=>{event.preventDefault();if(!activeThread)return;const input=el('messageInput'),body=input.value.trim();if(!body)return;el('sendMessage').disabled=true;const result=await API.post(`/api/messages/${encodeURIComponent(activeThread._id)}`,{body});el('sendMessage').disabled=false;if(!result.success){Toast.show(result.message||'Message could not be sent.','danger');return;}input.value='';await loadMessages();await loadThreads();});
+    (async()=>{try{await loadThreads();const recipient=new URLSearchParams(location.search).get('with');if(recipient)await startThread(recipient);else if(threads[0])await openThread(threads[0]);}catch(error){Toast.show(error.message,'danger');}})();
+    pollTimer=setInterval(async()=>{if(activeThread){await loadMessages();await loadThreads();}},15000);
+  </script>
+  <script src="/js/global-enhancements.js"></script>
+</body>
+</html>

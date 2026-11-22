@@ -144,7 +144,8 @@
 
   <script src="/js/app.js"></script>
   <script>
-    Auth.guard(['lawyer','admin']);
+    Auth.guard(['lawyer']);
+    const escHTML=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
     let allDocs=[], shareDocId=null;
 
     const getIcon=(t,n)=>{ const s=(t||'').toLowerCase()+(n||'').toLowerCase(); return s.includes('pdf')||s.includes('.pdf')?{i:'📕',c:'file-type-pdf'}: s.match(/word|\.doc/)? {i:'📘',c:'file-type-doc'}: s.match(/image|jpg|jpeg|png/)?{i:'🖼️',c:'file-type-img'}:{i:'📄',c:'file-type-txt'}; };
@@ -162,8 +163,8 @@
           <div style="display:flex;gap:10px;align-items:flex-start">
             <div class="doc-icon-wrap ${c}">${i}</div>
             <div style="flex:1;min-width:0">
-              <div style="font-weight:600;font-size:0.88rem;color:var(--navy);word-break:break-word">${d.title||d.originalName}</div>
-              ${d.description?`<div style="font-size:0.74rem;color:var(--muted);margin-top:2px">${d.description.slice(0,55)}${d.description.length>55?'...':''}</div>`:''}
+              <div style="font-weight:600;font-size:0.88rem;color:var(--navy);word-break:break-word">${escHTML(d.title||d.originalName)}</div>
+              ${d.description?`<div style="font-size:0.74rem;color:var(--muted);margin-top:2px">${escHTML(d.description.slice(0,55))}${d.description.length>55?'...':''}</div>`:''}
             </div>
           </div>
           <div class="doc-meta">
@@ -174,7 +175,7 @@
           <div class="doc-actions">
             <button type="button" onclick="SecureFiles.open('${d._id}')" class="btn btn-outline btn-sm">👁️ View</button>
             <button type="button" onclick="SecureFiles.open('${d._id}',true)" class="btn btn-dark btn-sm">⬇️ Download</button>
-            <button onclick="openShare('${d._id}','${(d.title||d.originalName).replace(/'/g,'')}')" class="btn btn-sm" style="background:rgba(201,168,76,0.12);color:var(--navy);border:none;cursor:pointer;border-radius:50px;padding:7px 12px;font-size:0.79rem;font-weight:600">🔗 Share</button>
+            <button onclick="openShare('${d._id}')" class="btn btn-sm" style="background:rgba(201,168,76,0.12);color:var(--navy);border:none;cursor:pointer;border-radius:50px;padding:7px 12px;font-size:0.79rem;font-weight:600">🔗 Share</button>
             <button onclick="delDoc('${d._id}',this)" class="btn btn-sm" style="background:#fef2f2;color:var(--danger);border:none;cursor:pointer;border-radius:50px;padding:7px 12px;font-size:0.79rem;font-weight:600">🗑️</button>
           </div>
         </div>`;
@@ -203,7 +204,7 @@
 
     const uploadFile=async(file,title='',desc='')=>{
       const form=new FormData();form.append('file',file);if(title)form.append('title',title);if(desc)form.append('description',desc);
-      return(await fetch('/api/documents',{method:'POST',headers:{'Authorization':`Bearer ${Auth.token()}`},body:form})).json();
+      return(await fetch('/api/documents',{method:'POST',body:form,credentials:'same-origin'})).json();
     };
 
     document.getElementById('uploadForm').addEventListener('submit',async e=>{
@@ -224,7 +225,7 @@
       if(d.success){Toast.show('Deleted','success');loadDocs();}else{Toast.show(d.message,'danger');btn.textContent='🗑️';btn.disabled=false;}
     };
 
-    const openShare=(id,name)=>{shareDocId=id;document.getElementById('shareDocName').textContent=`📄 ${name}`;document.getElementById('linkResult').classList.add('hidden');openModal('shareModal');};
+    const openShare=id=>{shareDocId=id;const doc=allDocs.find(item=>item._id===id);document.getElementById('shareDocName').textContent=`📄 ${doc?.title||doc?.originalName||'Document'}`;document.getElementById('linkResult').classList.add('hidden');openModal('shareModal');};
 
     const generateLink=async()=>{
       const btn=document.getElementById('shareBtn'),days=document.getElementById('shareDays').value;
