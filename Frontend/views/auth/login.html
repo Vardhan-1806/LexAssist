@@ -7,10 +7,14 @@
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/auth.css">
   <style>
-    .otp-wrap  { display:flex; gap:12px; justify-content:center; margin:18px 0; }
-    .otp-wrap input { width:54px; height:62px; text-align:center; font-size:1.6rem; font-weight:900; border:2.5px solid var(--ivory-dark); border-radius:12px; outline:none; color:var(--navy); transition:all 0.2s; font-family:'DM Sans',sans-serif; }
-    .otp-wrap input:focus { border-color:var(--gold); box-shadow:0 0 0 4px rgba(201,168,76,0.15); }
-    .otp-wrap input.filled { border-color:var(--navy); background:rgba(13,27,53,0.04); }
+    .otp-wrap  { display:flex; gap:clamp(5px,2.2vw,10px); justify-content:center; margin:18px 0 12px; }
+    .otp-wrap input { width:clamp(38px,11vw,50px); height:56px; flex:0 1 50px; text-align:center; font-size:1.45rem; font-weight:900; border:1.5px solid #d8dee8; border-radius:14px; outline:none; color:var(--navy); background:#fbfcfe; transition:border-color .2s,box-shadow .2s,transform .22s cubic-bezier(.2,.8,.2,1),background .2s; font-family:'DM Sans',sans-serif; animation:login-digit-in .4s both; }
+    .otp-wrap input:nth-child(2){animation-delay:.04s}.otp-wrap input:nth-child(3){animation-delay:.08s}.otp-wrap input:nth-child(4){animation-delay:.12s}.otp-wrap input:nth-child(5){animation-delay:.16s}.otp-wrap input:nth-child(6){animation-delay:.2s}
+    .otp-wrap input:focus { border-color:var(--gold); box-shadow:0 0 0 4px rgba(201,168,76,0.17); transform:translateY(-3px); }
+    .otp-wrap input.filled { border-color:#c99f46; background:#fffaf0; animation:login-digit-pop .28s cubic-bezier(.2,.9,.3,1.3); }
+    .login-otp-hint{margin:0 0 16px;text-align:center;color:var(--muted);font-size:.76rem;line-height:1.5}.login-otp-tools{display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;color:var(--muted);font-size:.75rem}.login-otp-tools button{border:0;background:transparent;color:#a3761f;font:inherit;font-weight:700;cursor:pointer}.login-otp-tools button:disabled{color:#9299a5;cursor:default}.otp-wrap.shake{animation:login-otp-shake .36s ease}
+    .auth-step-back{display:block;border:0;background:transparent;color:#78818e;font-size:.8rem;cursor:pointer;padding:4px 0 8px}.auth-step-back:hover{color:#9a6c10}
+    @keyframes login-digit-in{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}@keyframes login-digit-pop{50%{transform:scale(1.12)}}@keyframes login-otp-shake{25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
     .eye-btn { position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; font-size:1rem; padding:4px; }
   </style>
   <link rel="stylesheet" href="/css/premium.css">
@@ -56,7 +60,7 @@
     <button type="button" class="auth-step-back" onclick="backToLogin()" aria-label="Back to sign in"><span aria-hidden="true">←</span> Back to sign in</button>
     <div class="auth-logo"><span class="auth-brand-name">Lex<span>Assist</span></span></div>
     <div style="text-align:center;margin:18px 0">
-      <div style="font-size:3rem;margin-bottom:10px">📧</div>
+      <div class="login-otp-emblem" aria-hidden="true">✉</div>
       <h2 class="auth-title">Verify Your Email</h2>
       <p class="auth-subtitle">Enter the 6-digit code sent to<br><strong id="otpEmail" style="color:var(--navy)"></strong></p>
     </div>
@@ -71,16 +75,17 @@
       <input type="text" maxlength="1" inputmode="numeric" aria-label="Verification code digit 5" id="oo4" onpaste="pasteLoginOTP(event)" oninput="omv(this,4)" onkeydown="obk(event,4)">
       <input type="text" maxlength="1" inputmode="numeric" aria-label="Verification code digit 6" id="oo5" onpaste="pasteLoginOTP(event)" oninput="omv(this,5)" onkeydown="obk(event,5)">
     </div>
+    <p class="login-otp-hint">Check your inbox and spam folder. You can paste the full 6-digit code here.</p>
 
     <button onclick="verifyLoginOTP()" id="otpBtn" class="btn btn-primary btn-full btn-lg">Verify & Login →</button>
 
     <div style="display:flex;gap:12px;justify-content:center;margin-top:14px;flex-wrap:wrap">
-      <button onclick="resendLoginOTP()" class="btn btn-outline btn-sm">📧 Resend Code</button>
+      <div class="login-otp-tools"><button onclick="resendLoginOTP()" id="otpResendBtn">Resend code</button><span id="otpResendTimer"></span></div>
     </div>
   </div>
 
   <script>
-    let pendingEmail = '';
+    let pendingEmail = '', resendCooldown = null;
 
     // Auto-fill remembered email
     (function() {
@@ -149,6 +154,8 @@
             document.getElementById('loginBox').style.display = 'none';
             document.getElementById('otpBox').style.display   = 'block';
             document.getElementById('otpEmail').textContent   = pendingEmail;
+            document.querySelector('.otp-wrap').classList.add('is-ready');
+            document.getElementById('oo0').focus();
             showMsg(d.devOTP
               ? `Preview code: ${d.devOTP} — enter it below.`
               : `A verification code has been sent to ${pendingEmail}. Check your inbox and spam folder.`,
@@ -189,27 +196,27 @@
 
     // ── OTP helpers ───────────────────────────────────────────
     function omv(el, idx) {
-      el.value = el.value.replace(/\D/g,'');
+      el.value = el.value.replace(/\D/g,'').slice(-1);
       el.classList.toggle('filled', el.value!=='');
       if (el.value && idx < 5) document.getElementById('oo'+(idx+1)).focus();
-      if (idx===5 && el.value) verifyLoginOTP();
+      if (idx===5 && el.value) document.getElementById('otpBtn').focus();
     }
     function obk(e,idx) {
-      if (e.key==='Backspace' && !e.target.value && idx>0)
-        document.getElementById('oo'+(idx-1)).focus();
+      if (e.key==='Backspace' && !e.target.value && idx>0){const prev=document.getElementById('oo'+(idx-1));prev.focus();prev.value='';prev.classList.remove('filled');}
+      if(e.key==='ArrowLeft'&&idx>0)document.getElementById('oo'+(idx-1)).focus();
+      if(e.key==='ArrowRight'&&idx<5)document.getElementById('oo'+(idx+1)).focus();
     }
     function pasteLoginOTP(e) {
       const digits = (e.clipboardData.getData('text') || '').replace(/\D/g,'').slice(0,6);
       if (!digits) return;
       e.preventDefault();
-      [...digits].forEach((digit,index) => { document.getElementById('oo'+index).value=digit; });
+      [0,1,2,3,4,5].forEach(index=>{const input=document.getElementById('oo'+index);input.value=digits[index]||'';input.classList.toggle('filled',!!input.value)});
       document.getElementById('oo'+Math.min(digits.length,5)).focus();
-      if (digits.length===6) verifyLoginOTP();
     }
 
     async function verifyLoginOTP() {
       const otp = [0,1,2,3,4,5].map(i=>document.getElementById('oo'+i).value).join('');
-      if (otp.length!==6) { showMsg('Enter all 6 digits','warning','otpMsg'); return; }
+      if (otp.length!==6) { const wrap=document.querySelector('.otp-wrap');wrap.classList.remove('shake');void wrap.offsetWidth;wrap.classList.add('shake');showMsg('Enter all 6 digits','warning','otpMsg'); return; }
 
       const btn = document.getElementById('otpBtn');
       btn.innerHTML='<span class="loader"></span> Verifying...'; btn.disabled=true;
@@ -233,20 +240,20 @@
       }
     }
 
+    function startResendCooldown(seconds=30){const btn=document.getElementById('otpResendBtn'),timer=document.getElementById('otpResendTimer');clearInterval(resendCooldown);let left=seconds;btn.disabled=true;timer.textContent=`Try again in ${left}s`;resendCooldown=setInterval(()=>{left--;timer.textContent=left?`Try again in ${left}s`:'';if(left<=0){clearInterval(resendCooldown);btn.disabled=false}},1000)}
     async function resendLoginOTP() {
+      const resendBtn=document.getElementById('otpResendBtn');resendBtn.disabled=true;resendBtn.textContent='Sending…';
       try {
         const r = await fetch('/api/auth/resend-otp',{
           method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({email:pendingEmail})
         });
         const d = await r.json();
-        showMsg(d.success
-          ? (d.devOTP ? `Preview code: ${d.devOTP} — enter it below.` : 'New code sent! Check inbox and spam folder.')
-          : d.message,
-          d.success?'success':'danger','otpMsg');
+        if(!r.ok||!d.success){showMsg(d.message||'Could not send a new code.','danger','otpMsg');resendBtn.textContent='Resend code';resendBtn.disabled=false;return}
+        showMsg(d.devOTP?`Preview code: ${d.devOTP} — enter it below.`:'New code sent. Check inbox and spam folder.','success','otpMsg');
         [0,1,2,3,4,5].forEach(i=>{const el=document.getElementById('oo'+i);el.value='';el.classList.remove('filled');});
-        document.getElementById('oo0').focus();
-      } catch(e) { showMsg('Error resending code.','danger','otpMsg'); }
+        document.getElementById('oo0').focus();resendBtn.textContent='Resend code';startResendCooldown();
+      } catch(e) { showMsg('Could not reach email service. Please try again.','danger','otpMsg');resendBtn.textContent='Resend code';resendBtn.disabled=false; }
     }
 
     function backToLogin() {

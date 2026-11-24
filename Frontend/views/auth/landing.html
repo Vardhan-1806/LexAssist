@@ -23,7 +23,8 @@
         <circle class="intro-node" cx="108" cy="31" r="3" />
       </svg>
       <div class="brand-intro-name">Lex<span>Assist</span></div>
-      <div class="brand-intro-tagline">Understand the law. Know your next step.</div>
+      <div class="brand-intro-kicker">LEGAL CLARITY, WITH YOU</div>
+      <div class="brand-intro-tagline">Every right deserves a clearer next step.</div>
       <button class="brand-intro-skip" id="skipIntro" type="button">Skip introduction</button>
     </div>
     <div class="brand-intro-line" aria-hidden="true"></div>
@@ -212,7 +213,7 @@
     (() => {
       const intro = document.getElementById('brandIntro');
       const skip = document.getElementById('skipIntro');
-      const key = 'lexassist-intro-seen-v3';
+      const key = 'lexassist-intro-seen-v4';
       const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       let alreadySeen = false;
       try { alreadySeen = localStorage.getItem(key) === '1'; } catch (_) { try { alreadySeen = sessionStorage.getItem(key) === '1'; } catch (_) {} }
@@ -227,7 +228,7 @@
         intro.setAttribute('aria-hidden', 'false');
         document.body.classList.add('intro-playing');
         requestAnimationFrame(() => intro.classList.add('is-visible'));
-        const timer = window.setTimeout(finishIntro, 2800);
+        const timer = window.setTimeout(finishIntro, 3400);
         skip.addEventListener('click', () => { window.clearTimeout(timer); finishIntro(); });
       } else {
         try { localStorage.setItem(key, '1'); } catch (_) { try { sessionStorage.setItem(key, '1'); } catch (_) {} }

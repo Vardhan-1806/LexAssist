@@ -96,7 +96,7 @@ exports.register = async (req, res) => {
 
     // Send OTP email
     const result = await sendOTPEmail(email, name, otp, 'registration');
-    if (!result.success && !canExposeDevelopmentOTP()) return res.status(503).json({success:false,message:'Email delivery is temporarily unavailable. Please try again shortly.'});
+    if (!result.success && !canExposeDevelopmentOTP()) return res.status(503).json({success:false,message:'We could not deliver your verification email. Please try again shortly; the email service may need attention.'});
 
     res.status(200).json({
       success: true,
@@ -166,7 +166,7 @@ exports.resendOTP = async (req, res) => {
     );
 
     const result = await sendOTPEmail(email, user.name, otp, 'verification');
-    if (!result.success && !canExposeDevelopmentOTP()) return res.status(503).json({success:false,message:'Email delivery is temporarily unavailable. Please try again shortly.'});
+    if (!result.success && !canExposeDevelopmentOTP()) return res.status(503).json({success:false,message:'We could not deliver your verification email. Please try again shortly; the email service may need attention.'});
 
     res.json({ success: true, message: `New code sent to ${email}. Check inbox and spam.`,
       ...developmentOTPField(otp,result),
@@ -205,7 +205,7 @@ exports.login = async (req, res) => {
         { $set: { otp: hashedOTP, otpExpires: new Date(Date.now() + 10 * 60 * 1000) } }
       );
       const delivery=await sendOTPEmail(user.email, user.name, otp, 'email verification');
-      if (!delivery.success && !canExposeDevelopmentOTP()) return res.status(503).json({success:false,message:'Email delivery is temporarily unavailable. Please try again shortly.'});
+      if (!delivery.success && !canExposeDevelopmentOTP()) return res.status(503).json({success:false,message:'We could not deliver your verification email. Please try again shortly; the email service may need attention.'});
 
       return res.status(401).json({
         success:     false,
