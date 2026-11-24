@@ -53,6 +53,7 @@
 
   <!-- ── STEP 2: OTP verification (if email not yet verified) ── -->
   <div class="auth-box" id="otpBox" style="display:none">
+    <button type="button" class="auth-step-back" onclick="backToLogin()" aria-label="Back to sign in"><span aria-hidden="true">←</span> Back to sign in</button>
     <div class="auth-logo">LEX<span>ASSIST</span></div>
     <div style="text-align:center;margin:18px 0">
       <div style="font-size:3rem;margin-bottom:10px">📧</div>
@@ -75,7 +76,6 @@
 
     <div style="display:flex;gap:12px;justify-content:center;margin-top:14px;flex-wrap:wrap">
       <button onclick="resendLoginOTP()" class="btn btn-outline btn-sm">📧 Resend Code</button>
-      <button onclick="backToLogin()" style="background:none;border:none;color:var(--muted);font-size:0.82rem;cursor:pointer">← Back</button>
     </div>
   </div>
 
@@ -149,7 +149,10 @@
             document.getElementById('loginBox').style.display = 'none';
             document.getElementById('otpBox').style.display   = 'block';
             document.getElementById('otpEmail').textContent   = pendingEmail;
-            showMsg(`📧 A verification code has been sent to your email.${d.devOTP?` Development code: ${d.devOTP}`:''}`, 'info', 'otpMsg');
+            showMsg(d.devOTP
+              ? `Preview code: ${d.devOTP} — enter it below.`
+              : `A verification code has been sent to ${pendingEmail}. Check your inbox and spam folder.`,
+              'info', 'otpMsg');
           } else {
             showMsg(d.message || 'Invalid email or password');
           }
@@ -237,7 +240,10 @@
           body:JSON.stringify({email:pendingEmail})
         });
         const d = await r.json();
-        showMsg(d.success?`✅ New code sent! Check inbox.${d.devOTP?` Development code: ${d.devOTP}`:''}`:d.message, d.success?'success':'danger','otpMsg');
+        showMsg(d.success
+          ? (d.devOTP ? `Preview code: ${d.devOTP} — enter it below.` : 'New code sent! Check inbox and spam folder.')
+          : d.message,
+          d.success?'success':'danger','otpMsg');
         [0,1,2,3,4,5].forEach(i=>{const el=document.getElementById('oo'+i);el.value='';el.classList.remove('filled');});
         document.getElementById('oo0').focus();
       } catch(e) { showMsg('Error resending code.','danger','otpMsg'); }

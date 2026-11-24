@@ -79,6 +79,38 @@ const FloatChat = {
     return `Hello ${name}! How can I help you with your legal matters today?`;
   },
 
+  makeDraggable: (panel) => {
+    const handle = panel.querySelector('#fcDragHandle');
+    if (!handle) return;
+    let drag = null;
+
+    handle.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || event.target.closest('button')) return;
+      const rect = panel.getBoundingClientRect();
+      drag = { pointerId:event.pointerId, x:event.clientX, y:event.clientY, left:rect.left, top:rect.top };
+      panel.style.left = `${rect.left}px`;
+      panel.style.top = `${rect.top}px`;
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      handle.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    handle.addEventListener('pointermove', event => {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const left = Math.max(8, Math.min(window.innerWidth - panel.offsetWidth - 8, drag.left + event.clientX - drag.x));
+      const top = Math.max(8, Math.min(window.innerHeight - panel.offsetHeight - 8, drag.top + event.clientY - drag.y));
+      panel.style.left = `${left}px`;
+      panel.style.top = `${top}px`;
+    });
+    const stopDrag = event => {
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      drag = null;
+      if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+    };
+    handle.addEventListener('pointerup', stopDrag);
+    handle.addEventListener('pointercancel', stopDrag);
+  },
+
   init: () => {
     // Don't add on auth pages
     if (['/login','/register','/','/admin/login'].includes(window.location.pathname)) return;

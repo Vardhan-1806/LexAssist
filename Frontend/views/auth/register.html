@@ -108,11 +108,12 @@
 
   <!-- STEP 2: OTP Verification -->
   <div class="auth-box" id="step2" style="display:none">
+    <button type="button" class="auth-step-back" onclick="goBack()" aria-label="Back to registration details"><span aria-hidden="true">←</span> Edit details</button>
     <div class="auth-logo">LEX<span>ASSIST</span></div>
     <div style="text-align:center;margin:20px 0">
       <div style="font-size:3rem;margin-bottom:12px">📧</div>
-      <h2 class="auth-title">Check Your Email</h2>
-      <p class="auth-subtitle">We sent a 6-digit code to</p>
+      <h2 class="auth-title">Verify your account</h2>
+      <p class="auth-subtitle">Enter the 6-digit verification code</p>
       <div id="sentEmail" style="font-weight:700;color:var(--navy);font-size:0.9rem;margin-top:4px"></div>
     </div>
 
@@ -245,7 +246,10 @@
         document.getElementById('step1').style.display = 'none';
         document.getElementById('step2').style.display = 'block';
         document.getElementById('sentEmail').textContent = regEmail;
-        if (d.devOTP) showAlert(`Development verification code: ${d.devOTP}`, 'info', 'alert2');
+        showAlert(d.devOTP
+          ? `Preview code: ${d.devOTP} — enter this code below.`
+          : `A verification code was sent to ${regEmail}. Check your inbox and spam folder.`,
+          d.devOTP ? 'info' : 'success', 'alert2');
         startTimer();
         document.getElementById('o0').focus();
 
@@ -340,7 +344,10 @@
         });
         const d = await r.json();
         if (d.success) {
-          showAlert('✅ New code sent! Check your inbox.', 'success', 'alert2');
+          showAlert(d.devOTP
+            ? `Preview code: ${d.devOTP} — enter this code below.`
+            : 'New code sent! Check your inbox and spam folder.',
+            d.devOTP ? 'info' : 'success', 'alert2');
           [0,1,2,3,4,5].forEach(i => { const el = document.getElementById('o'+i); el.value=''; el.classList.remove('filled'); });
           document.getElementById('o0').focus();
           startTimer();

@@ -6,7 +6,8 @@ const jwt    = require('jsonwebtoken');
 const User   = require('../models/User');
 const { sendOTPEmail, sendWelcomeEmail } = require('../utils/emailService');
 
-const developmentOTPField=(otp,delivery)=>process.env.NODE_ENV==='development'&&process.env.ALLOW_DEV_OTP==='true'&&delivery?.dev?{devOTP:otp}:{};
+const canExposeDevelopmentOTP=()=>process.env.NODE_ENV==='development'&&process.env.ALLOW_DEV_OTP==='true';
+const developmentOTPField=(otp,delivery)=>canExposeDevelopmentOTP()&&(delivery?.dev||delivery?.success===false)?{devOTP:otp}:{};
 
 const signToken = (id, expiry = '7d') =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: expiry });
@@ -95,7 +96,7 @@ exports.register = async (req, res) => {
 
     // Send OTP email
     const result = await sendOTPEmail(email, name, otp, 'registration');
-    if (!result.success) return res.status(503).json({success:false,message:'Email delivery is temporarily unavailable. Please try again shortly.'});
+    if (!result.success && !canExposeDevelopmentOTP()) return res.status(503).json({success:false,message:'Email delivery is temporarily unavailable. Please try again shortly.'});
 
     res.status(200).json({
       success: true,
@@ -165,7 +166,7 @@ exports.resendOTP = async (req, res) => {
     );
 
     const result = await sendOTPEmail(email, user.name, otp, 'verification');
-    if (!result.success) return res.status(503).json({success:false,message:'Email delivery is temporarily unavailable. Please try again shortly.'});
+    if (!result.success && !canExposeDevelopmentOTP()) return res.status(503).json({success:false,message:'Email delivery is temporarily unavailable. Please try again shortly.'});
 
     res.json({ success: true, message: `New code sent to ${email}. Check inbox and spam.`,
       ...developmentOTPField(otp,result),
@@ -204,7 +205,7 @@ exports.login = async (req, res) => {
         { $set: { otp: hashedOTP, otpExpires: new Date(Date.now() + 10 * 60 * 1000) } }
       );
       const delivery=await sendOTPEmail(user.email, user.name, otp, 'email verification');
-      if (!delivery.success) return res.status(503).json({success:false,message:'Email delivery is temporarily unavailable. Please try again shortly.'});
+      if (!delivery.success && !canExposeDevelopmentOTP()) return res.status(503).json({success:false,message:'Email delivery is temporarily unavailable. Please try again shortly.'});
 
       return res.status(401).json({
         success:     false,

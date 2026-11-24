@@ -44,7 +44,7 @@
     <div class="hero-inner">
       <div>
         <div class="hero-eyebrow">A clearer way to navigate legal matters</div>
-        <h1 aria-label="Legal clarity. Within reach.">Legal clarity.<br><span class="hero-rotating-word"><span aria-hidden="true">Within reach.</span><span aria-hidden="true">Made clearer.</span><span aria-hidden="true">One step ahead.</span></span></h1>
+        <h1 aria-label="Legal clarity. Within reach.">Legal clarity.<br><span class="hero-rotating-word" id="heroRotatingWord" aria-hidden="true">Within reach.</span></h1>
         <p class="hero-desc">Understand legal information, follow your case progress, and connect with a legal professional through one thoughtful platform.</p>
         <div class="hero-cta">
           <a href="/chatbot" class="btn btn-primary btn-lg">Explore Lexi AI →</a>
@@ -207,7 +207,7 @@
     (() => {
       const intro = document.getElementById('brandIntro');
       const skip = document.getElementById('skipIntro');
-      const key = 'lexassist-intro-seen';
+      const key = 'lexassist-intro-seen-v2';
       const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       let alreadySeen = false;
       try { alreadySeen = localStorage.getItem(key) === '1'; } catch (_) { try { alreadySeen = sessionStorage.getItem(key) === '1'; } catch (_) {} }
@@ -228,6 +228,20 @@
         try { localStorage.setItem(key, '1'); } catch (_) { try { sessionStorage.setItem(key, '1'); } catch (_) {} }
       }
     })();
+    // Rotate one phrase in place, avoiding stacked text and layout overlap.
+    const heroRotatingWord = document.getElementById('heroRotatingWord');
+    if (heroRotatingWord && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const heroPhrases = ['Within reach.', 'Made clearer.', 'One step ahead.'];
+      let heroPhraseIndex = 0;
+      window.setInterval(() => {
+        heroRotatingWord.classList.add('is-changing');
+        window.setTimeout(() => {
+          heroPhraseIndex = (heroPhraseIndex + 1) % heroPhrases.length;
+          heroRotatingWord.textContent = heroPhrases[heroPhraseIndex];
+          heroRotatingWord.classList.remove('is-changing');
+        }, 180);
+      }, 3200);
+    }
     // Mobile navbar toggle
     document.getElementById('hamburger').setAttribute('aria-expanded','false');
     document.getElementById('hamburger').setAttribute('aria-label','Toggle navigation');
