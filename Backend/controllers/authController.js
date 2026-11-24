@@ -294,6 +294,16 @@ exports.forgotPassword = async (req, res) => {
 
     const delivery=await sendOTPEmail(email, user.name, otp, 'password reset');
 
+    // Do not tell the user a code was sent when SMTP rejected the message.
+    // The UI keeps the email step open so they can retry after delivery is fixed.
+    if (!delivery.success && !canExposeDevelopmentOTP()) {
+      console.error('Password reset OTP delivery unavailable:', delivery.error || 'Email service not configured');
+      return res.status(503).json({
+        success: false,
+        message: 'We could not deliver the reset email right now. Please check your inbox address and try again shortly.',
+      });
+    }
+
     res.json({ success: true, message: 'If an account exists for that email, a reset code has been sent.', ...developmentOTPField(otp,delivery) });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
