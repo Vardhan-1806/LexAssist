@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LEXASSIST – AI-Powered Legal Assistance Platform</title>
+  <link rel="icon" type="image/svg+xml" href="/images/lexassist-mark.svg">
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/auth.css">
   <link rel="stylesheet" href="/css/premium.css">
@@ -12,12 +13,16 @@
 
   <div class="brand-intro" id="brandIntro" hidden aria-hidden="true">
     <div class="brand-intro-content" role="status" aria-live="polite">
-      <svg class="brand-intro-mark" viewBox="0 0 72 72" aria-hidden="true">
-        <path class="intro-document" d="M20 9h22l12 12v42H20zM42 9v13h12M28 34h18M28 42h18M28 50h10" />
-        <path class="intro-letter" d="M33 28v22h14" />
-        <circle class="intro-node" cx="53" cy="21" r="2" />
+      <svg class="brand-intro-mark" viewBox="0 0 128 128" aria-hidden="true">
+        <path class="intro-orbit" d="M12 88C22 24 89 7 114 39" />
+        <path class="intro-scale-line" d="M64 27v70M34 40h60M64 29 37 40m27-11 27 11M37 42 23 73m14-31 14 31m38-31L75 73m14-31 14 31" />
+        <path class="intro-scale-bowl" d="M13 74c4 18 38 18 48 0m6 0c10 18 44 18 48 0" />
+        <path class="intro-scale-base" d="M64 96c-17 0-29 7-34 15h68c-5-8-17-15-34-15Z" />
+        <path class="intro-scale-pan" d="M20 69h34l-4 8c-6 7-20 7-26 0l-4-8Zm54 0h34l-4 8c-6 7-20 7-26 0l-4-8Z" />
+        <path class="intro-scale-diamond" d="m64 8 7 9-7 9-7-9 7-9Z" />
+        <circle class="intro-node" cx="108" cy="31" r="3" />
       </svg>
-      <div class="brand-intro-name">LEX<span>ASSIST</span></div>
+      <div class="brand-intro-name">Lex<span>Assist</span></div>
       <div class="brand-intro-tagline">Understand the law. Know your next step.</div>
       <button class="brand-intro-skip" id="skipIntro" type="button">Skip introduction</button>
     </div>
@@ -26,7 +31,7 @@
 
   <!-- Navbar -->
   <nav class="navbar">
-    <a href="/" class="navbar-brand"><span class="brand-mark" aria-hidden="true">L</span><span class="brand-wordmark">LEX<span>ASSIST</span></span></a>
+    <a href="/" class="navbar-brand"><span class="brand-mark" aria-hidden="true">L</span><span class="brand-wordmark">Lex<span>Assist</span></span></a>
     <ul class="navbar-links">
       <li><a href="#features">Features</a></li>
       <li><a href="#how-it-works">How It Works</a></li>
@@ -207,7 +212,7 @@
     (() => {
       const intro = document.getElementById('brandIntro');
       const skip = document.getElementById('skipIntro');
-      const key = 'lexassist-intro-seen-v2';
+      const key = 'lexassist-intro-seen-v3';
       const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       let alreadySeen = false;
       try { alreadySeen = localStorage.getItem(key) === '1'; } catch (_) { try { alreadySeen = sessionStorage.getItem(key) === '1'; } catch (_) {} }
@@ -222,7 +227,7 @@
         intro.setAttribute('aria-hidden', 'false');
         document.body.classList.add('intro-playing');
         requestAnimationFrame(() => intro.classList.add('is-visible'));
-        const timer = window.setTimeout(finishIntro, 1900);
+        const timer = window.setTimeout(finishIntro, 2800);
         skip.addEventListener('click', () => { window.clearTimeout(timer); finishIntro(); });
       } else {
         try { localStorage.setItem(key, '1'); } catch (_) { try { sessionStorage.setItem(key, '1'); } catch (_) {} }

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">LexAssist scales of justice mark</title>
+  <path fill="#e1b96f" d="m64 8 7 9-7 9-7-9 7-9Z"/>
+  <path fill="none" stroke="#fffaf1" stroke-linecap="round" stroke-linejoin="round" stroke-width="6" d="M64 27v70M34 40h60M64 29 37 40m27-11 27 11M37 42 23 73m14-31 14 31m38-31L75 73m14-31 14 31"/>
+  <path fill="none" stroke="#e1b96f" stroke-linecap="round" stroke-linejoin="round" stroke-width="5" d="M13 74c4 18 38 18 48 0m6 0c10 18 44 18 48 0M64 96c-17 0-29 7-34 15h68c-5-8-17-15-34-15Z"/>
+  <path fill="#fffaf1" d="M20 69h34l-4 8c-6 7-20 7-26 0l-4-8Zm54 0h34l-4 8c-6 7-20 7-26 0l-4-8Z"/>
+  <circle cx="34" cy="40" r="5" fill="#e1b96f"/><circle cx="94" cy="40" r="5" fill="#e1b96f"/>
+</svg>
