@@ -6,8 +6,6 @@ const jwt    = require('jsonwebtoken');
 const User   = require('../models/User');
 const { sendOTPEmail, sendWelcomeEmail } = require('../utils/emailService');
 
-const canExposeDevelopmentOTP=()=>process.env.NODE_ENV==='development'&&process.env.ALLOW_DEV_OTP==='true';
-const developmentOTPField=(otp,delivery)=>canExposeDevelopmentOTP()&&(delivery?.dev||delivery?.success===false)?{devOTP:otp}:{};
 
 const signToken = (id, expiry = '7d') =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: expiry });
@@ -96,13 +94,12 @@ exports.register = async (req, res) => {
 
     // Send OTP email
     const result = await sendOTPEmail(email, name, otp, 'registration');
-    if (!result.success && !canExposeDevelopmentOTP()) return res.status(503).json({success:false,message:'We could not deliver your verification email. Please try again shortly; the email service may need attention.'});
+    if (!result.success) return res.status(503).json({success:false,message:'We could not deliver your verification email. Please try again shortly; the email service may need attention.'});
 
     res.status(200).json({
       success: true,
       message: `Verification code sent to ${email}. Check your inbox and spam folder.`,
       data:    { email, name, requiresOTP: true },
-      ...developmentOTPField(otp,result),
     });
   } catch (err) {
     console.error('Register error:', err);
@@ -166,10 +163,9 @@ exports.resendOTP = async (req, res) => {
     );
 
     const result = await sendOTPEmail(email, user.name, otp, 'verification');
-    if (!result.success && !canExposeDevelopmentOTP()) return res.status(503).json({success:false,message:'We could not deliver your verification email. Please try again shortly; the email service may need attention.'});
+    if (!result.success) return res.status(503).json({success:false,message:'We could not deliver your verification email. Please try again shortly; the email service may need attention.'});
 
     res.json({ success: true, message: `New code sent to ${email}. Check inbox and spam.`,
-      ...developmentOTPField(otp,result),
       });
   } catch (err) {
     console.error('Resend OTP error:', err);
@@ -205,14 +201,13 @@ exports.login = async (req, res) => {
         { $set: { otp: hashedOTP, otpExpires: new Date(Date.now() + 10 * 60 * 1000) } }
       );
       const delivery=await sendOTPEmail(user.email, user.name, otp, 'email verification');
-      if (!delivery.success && !canExposeDevelopmentOTP()) return res.status(503).json({success:false,message:'We could not deliver your verification email. Please try again shortly; the email service may need attention.'});
+      if (!delivery.success) return res.status(503).json({success:false,message:'We could not deliver your verification email. Please try again shortly; the email service may need attention.'});
 
       return res.status(401).json({
         success:     false,
         message:     'Please verify your email first. A new code has been sent.',
         requiresOTP: true,
         email:       user.email,
-        ...developmentOTPField(otp,delivery),
       });
     }
 
@@ -296,7 +291,7 @@ exports.forgotPassword = async (req, res) => {
 
     // Do not tell the user a code was sent when SMTP rejected the message.
     // The UI keeps the email step open so they can retry after delivery is fixed.
-    if (!delivery.success && !canExposeDevelopmentOTP()) {
+    if (!delivery.success) {
       console.error('Password reset OTP delivery unavailable:', delivery.error || 'Email service not configured');
       return res.status(503).json({
         success: false,
@@ -304,7 +299,7 @@ exports.forgotPassword = async (req, res) => {
       });
     }
 
-    res.json({ success: true, message: 'If an account exists for that email, a reset code has been sent.', ...developmentOTPField(otp,delivery) });
+    res.json({ success: true, message: 'If an account exists for that email, a reset code has been sent.' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

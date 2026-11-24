@@ -16,7 +16,6 @@ const validateEnvironment = (env=process.env) => {
   if(env.AI_REQUESTS_PER_DAY&&(!Number.isInteger(Number(env.AI_REQUESTS_PER_DAY))||Number(env.AI_REQUESTS_PER_DAY)<1||Number(env.AI_REQUESTS_PER_DAY)>1000))errors.push('AI_REQUESTS_PER_DAY must be between 1 and 1000');
 
   if(production){
-    if(env.ALLOW_DEV_OTP==='true')errors.push('ALLOW_DEV_OTP must be disabled in production');
     if(env.ALLOW_ADMIN_BOOTSTRAP==='true')errors.push('Remove ALLOW_ADMIN_BOOTSTRAP before starting the production web service');
     if(!env.CLIENT_URL)errors.push('CLIENT_URL is required in production');
     else { try { const url=new URL(env.CLIENT_URL);if(url.protocol!=='https:'||url.pathname!=='/'||url.search||url.hash)errors.push('CLIENT_URL must be an HTTPS origin without a path or query'); } catch { errors.push('CLIENT_URL must be a valid HTTPS URL'); } }

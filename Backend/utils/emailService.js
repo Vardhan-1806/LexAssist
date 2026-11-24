@@ -67,12 +67,7 @@ exports.sendEmail = async ({ to, subject, html }) => {
   const t = getTransporter();
 
   if (!t) {
-    // Only permit the local preview fallback when it is explicitly enabled.
-    // A public deployment with SMTP missing must never claim an email was sent.
-    if (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_OTP === 'true') {
-      console.log('📧 Email not sent; development OTP preview is enabled. Configure SMTP for inbox delivery.');
-      return { success: true, dev: true };
-    }
+    // Never return authentication codes in an HTTP response or claim that an email was delivered.
     console.warn('⚠️ Email delivery is not configured; OTP was not sent.');
     return { success: false, error: 'Email delivery is not configured' };
   }

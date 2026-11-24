@@ -77,13 +77,12 @@ const Toast = {
   show: (msg, type = 'success', ms = 4000) => {
     let c = document.getElementById('toastContainer');
     if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; document.body.appendChild(c); }
-    const colors = { success:'#16a34a', danger:'#dc2626', warning:'#d97706', info:'#0284c7' };
     const icons  = { success:'✅', danger:'❌', warning:'⚠️', info:'ℹ️' };
     const t = document.createElement('div');
-    t.style.cssText = `background:white;border-left:4px solid ${colors[type]};border-radius:10px;padding:12px 16px;box-shadow:0 8px 24px rgba(0,0,0,0.14);display:flex;align-items:center;gap:9px;font-family:'DM Sans',sans-serif;font-size:0.875rem;font-weight:500;cursor:pointer;pointer-events:all;animation:slideIn 0.25s ease`;
+    t.className = `app-toast app-toast-${type}`;
     const icon=document.createElement('span'); icon.textContent=icons[type]||icons.info;
-    const body=document.createElement('span'); body.style.cssText='flex:1;color:#1a1a2e'; body.textContent=String(msg??'');
-    const close=document.createElement('button'); close.type='button'; close.setAttribute('aria-label','Dismiss notification'); close.textContent='×'; close.style.cssText='border:0;background:transparent;color:#64748b;font-size:1.1rem;cursor:pointer';
+    const body=document.createElement('span'); body.className='app-toast-message'; body.textContent=String(msg??'');
+    const close=document.createElement('button'); close.type='button'; close.setAttribute('aria-label','Dismiss notification'); close.textContent='×'; close.className='app-toast-close';
     close.addEventListener('click',event=>{event.stopPropagation();t.remove();}); t.append(icon,body,close);
     t.addEventListener('click', () => t.remove());
     if (!document.getElementById('toastKeyframes')) {
@@ -255,20 +254,23 @@ window.openModal = openModal; window.closeModal = closeModal;
 // ═══════════════════════════════════════════════════════════
 const ThemeManager = {
   init: () => {
-    const saved = localStorage.getItem('lexassist_theme') || 'light';
+    let saved='light';try{saved=localStorage.getItem('lexassist_theme')||'light'}catch(_){}
     ThemeManager.apply(saved);
   },
   apply: (theme) => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('lexassist_theme', theme);
+    const selected = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', selected);
+    try { localStorage.setItem('lexassist_theme', selected); } catch (_) {}
     // Update all toggle buttons
     document.querySelectorAll('.theme-toggle').forEach(btn => {
-      btn.textContent = theme === 'dark' ? '☀️' : '🌙';
-      btn.title = theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+      btn.textContent = selected === 'dark' ? '☀️' : '🌙';
+      btn.title = selected === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+      btn.setAttribute('aria-label', btn.title);
+      btn.setAttribute('aria-pressed', String(selected === 'dark'));
     });
   },
   toggle: () => {
-    const current = localStorage.getItem('lexassist_theme') || 'light';
+    const current = document.documentElement.getAttribute('data-theme') || (()=>{try{return localStorage.getItem('lexassist_theme')||'light'}catch(_){return 'light'}})();
     ThemeManager.apply(current === 'dark' ? 'light' : 'dark');
   },
   isDark: () => localStorage.getItem('lexassist_theme') === 'dark',
@@ -287,6 +289,28 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 window.ThemeManager = ThemeManager;
+
+// Show a quiet top-edge indicator only when an internal API call is taking time.
+(function installNetworkFeedback(){
+  const originalFetch=window.fetch.bind(window);
+  let pending=0,showTimer=null,bar=null;
+  const getBar=()=>{
+    if(bar)return bar;
+    bar=document.createElement('div');bar.className='app-network-loader';bar.setAttribute('role','progressbar');bar.setAttribute('aria-label','Loading workspace data');bar.setAttribute('aria-hidden','true');
+    const line=document.createElement('span');bar.append(line);document.body.prepend(bar);return bar;
+  };
+  window.fetch=function(input,options){
+    const address=typeof input==='string'?input:input?.url||'';
+    let isApi=false;try{isApi=new URL(address,window.location.href).origin===window.location.origin&&new URL(address,window.location.href).pathname.startsWith('/api/')}catch(_){}
+    if(!isApi)return originalFetch(input,options);
+    pending++;
+    if(pending===1)showTimer=window.setTimeout(()=>{const el=getBar();el.classList.add('is-visible');el.setAttribute('aria-hidden','false')},180);
+    return originalFetch(input,options).finally(()=>{
+      pending=Math.max(0,pending-1);
+      if(!pending){window.clearTimeout(showTimer);showTimer=null;if(bar){bar.classList.remove('is-visible');bar.setAttribute('aria-hidden','true')}}
+    });
+  };
+})();
 
 // ── Real-time Notification Panel ─────────────────────────────
 const NotifPanel = {
@@ -384,13 +408,14 @@ const CommandMenu = {
       dialog.addEventListener('click',event=>{if(event.target===dialog)CommandMenu.close();}); dialog.addEventListener('keydown',CommandMenu.keys); document.body.append(dialog);
       dialog.querySelector('#commandSearch').addEventListener('input',CommandMenu.filter);
     }
+    const role=Auth.user().role;
     const actions={
-      citizen:[['Ask Lexi','/chatbot'],['Find a lawyer','/lawyers'],['View cases','/cases'],['Book appointment','/lawyers'],['Open messages','/messages']],
+      citizen:[['Ask Lexi','/chatbot'],['Find a lawyer','/lawyers'],['View cases','/cases'],['My appointments','/appointments'],['Open messages','/messages']],
       lawyer:[['View client cases','/cases'],['Manage appointments','/appointments'],['Open messages','/messages'],['Manage calendar','/calendar'],['Open documents','/lawyer/documents']],
-      admin:[['Review lawyer verification','/dashboard/admin'],['Manage users','/dashboard/admin'],['Open knowledge base','/dashboard/admin'],['View reports','/dashboard/admin']],
-    }[Auth.user().role]||[];
+      admin:[['Review lawyer verification','verification'],['Manage users','users'],['Open knowledge base','knowledge'],['View analytics','analytics'],['Broadcast an update','broadcast']],
+    }[role]||[];
     const results=dialog.querySelector('#commandResults'); results.replaceChildren();
-    actions.forEach(([label,href])=>{const button=document.createElement('a');button.className='command-option';button.href=href;button.textContent=label;results.append(button);});
+    actions.forEach(([label,target])=>{const button=document.createElement('a');button.className='command-option';button.textContent=label;if(role==='admin'){button.href=`#pane-${target}`;button.addEventListener('click',event=>{event.preventDefault();const tab=[...document.querySelectorAll('.tabs .tab')].find(item=>item.getAttribute('onclick')?.includes(`'${target}'`));tab?.click();CommandMenu.close();});}else button.href=target;results.append(button);});
     dialog.classList.add('is-open');const search=dialog.querySelector('#commandSearch');search.value='';search.focus();CommandMenu.filter();
   },
   close(){document.getElementById('commandMenu')?.classList.remove('is-open');document.querySelector('[data-command-open]')?.focus();},
@@ -402,6 +427,6 @@ window.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&eve
 
 function initGlobalControls(){
   const actions=document.querySelector('.navbar-actions'); if(!actions)return;
-  if(!actions.querySelector('.theme-toggle')){const theme=document.createElement('button');theme.type='button';theme.className='theme-toggle btn btn-outline btn-sm';theme.setAttribute('aria-label','Toggle light or dark theme');theme.textContent='◐';theme.addEventListener('click',ThemeManager.toggle);actions.prepend(theme);}
+  if(!actions.querySelector('.theme-toggle')){const theme=document.createElement('button');theme.type='button';theme.className='theme-toggle btn btn-outline btn-sm';theme.setAttribute('aria-label','Toggle light or dark theme');theme.textContent='◐';actions.prepend(theme);}
   if(!actions.querySelector('[data-command-open]')){const trigger=document.createElement('button');trigger.type='button';trigger.className='command-trigger btn btn-outline btn-sm';trigger.dataset.commandOpen='';trigger.setAttribute('aria-label','Open quick actions (Control K)');trigger.innerHTML='<span aria-hidden="true">⌕</span><span>Quick actions</span><kbd>Ctrl K</kbd>';trigger.addEventListener('click',()=>CommandMenu.open());actions.prepend(trigger);}
 }

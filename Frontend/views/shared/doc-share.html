@@ -42,8 +42,8 @@
         </div>
 
         <div style="display:flex;gap:10px;flex-direction:column">
-          <a id="downloadBtn" href="#" download class="btn btn-primary btn-full btn-lg">⬇️ Download Document</a>
-          <a id="viewBtn" href="#" target="_blank" class="btn btn-outline btn-full">👁️ View in Browser</a>
+          <a id="downloadBtn" download class="btn btn-primary btn-full btn-lg" aria-disabled="true" tabindex="-1">⬇️ Download Document</a>
+          <a id="viewBtn" target="_blank" rel="noopener" class="btn btn-outline btn-full" aria-disabled="true" tabindex="-1">👁️ View in Browser</a>
         </div>
 
         <div style="margin-top:20px;padding:14px;background:rgba(13,27,53,0.04);border-radius:var(--radius);text-align:center">
@@ -104,6 +104,7 @@
         document.getElementById('downloadBtn').href = d.fileUrl;
         document.getElementById('downloadBtn').download = d.originalName || d.title;
         document.getElementById('viewBtn').href = d.fileUrl;
+        ['downloadBtn','viewBtn'].forEach(id=>{const link=document.getElementById(id);link.removeAttribute('aria-disabled');link.removeAttribute('tabindex')});
 
         // Update page title
         document.title = `${d.title||d.originalName} – LEXASSIST`;

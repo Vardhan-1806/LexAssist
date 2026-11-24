@@ -246,10 +246,7 @@
         document.getElementById('step1').style.display = 'none';
         document.getElementById('step2').style.display = 'block';
         document.getElementById('sentEmail').textContent = regEmail;
-        showAlert(d.devOTP
-          ? `Preview code: ${d.devOTP} — enter this code below.`
-          : `A verification code was sent to ${regEmail}. Check your inbox and spam folder.`,
-          d.devOTP ? 'info' : 'success', 'alert2');
+        showAlert(`A verification code was sent to ${regEmail}. Check your inbox and spam folder.`, 'success', 'alert2');
         startTimer();
         document.getElementById('o0').focus();
 
@@ -344,10 +341,7 @@
         });
         const d = await r.json();
         if (d.success) {
-          showAlert(d.devOTP
-            ? `Preview code: ${d.devOTP} — enter this code below.`
-            : 'New code sent! Check your inbox and spam folder.',
-            d.devOTP ? 'info' : 'success', 'alert2');
+          showAlert('New code sent! Check your inbox and spam folder.', 'success', 'alert2');
           [0,1,2,3,4,5].forEach(i => { const el = document.getElementById('o'+i); el.value=''; el.classList.remove('filled'); });
           document.getElementById('o0').focus();
           startTimer();

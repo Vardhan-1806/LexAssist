@@ -156,10 +156,7 @@
             document.getElementById('otpEmail').textContent   = pendingEmail;
             document.querySelector('.otp-wrap').classList.add('is-ready');
             document.getElementById('oo0').focus();
-            showMsg(d.devOTP
-              ? `Preview code: ${d.devOTP} — enter it below.`
-              : `A verification code has been sent to ${pendingEmail}. Check your inbox and spam folder.`,
-              'info', 'otpMsg');
+            showMsg(`A verification code has been sent to ${pendingEmail}. Check your inbox and spam folder.`, 'info', 'otpMsg');
           } else {
             showMsg(d.message || 'Invalid email or password');
           }
@@ -250,7 +247,7 @@
         });
         const d = await r.json();
         if(!r.ok||!d.success){showMsg(d.message||'Could not send a new code.','danger','otpMsg');resendBtn.textContent='Resend code';resendBtn.disabled=false;return}
-        showMsg(d.devOTP?`Preview code: ${d.devOTP} — enter it below.`:'New code sent. Check inbox and spam folder.','success','otpMsg');
+        showMsg('New code sent. Check your inbox and spam folder.','success','otpMsg');
         [0,1,2,3,4,5].forEach(i=>{const el=document.getElementById('oo'+i);el.value='';el.classList.remove('filled');});
         document.getElementById('oo0').focus();resendBtn.textContent='Resend code';startResendCooldown();
       } catch(e) { showMsg('Could not reach email service. Please try again.','danger','otpMsg');resendBtn.textContent='Resend code';resendBtn.disabled=false; }
