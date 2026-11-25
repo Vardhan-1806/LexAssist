@@ -650,3 +650,40 @@ body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) :is(.flex-b
 @media(max-width:540px){body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .main-content{padding:18px 12px 22px}body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .grid-2,body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .grid-3,body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .grid-4,body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .stat-grid,body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .form-grid-2{grid-template-columns:minmax(0,1fr)}body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .page-header{margin-bottom:16px}body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .page-header h1{font-size:clamp(1.35rem,7vw,1.8rem)}body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .card{border-radius:15px}body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .btn{min-height:42px}body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .navbar-brand::before{width:29px;height:29px;flex-basis:29px}body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .brand-wordmark{font-size:1rem}body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .navbar-actions .btn{padding:7px 10px;font-size:.75rem}body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .availability-row{grid-template-columns:18px minmax(0,1fr) minmax(0,1fr) 12px minmax(0,1fr);gap:5px;font-size:.73rem}}
 @media(max-width:360px){body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .navbar-brand .brand-wordmark{display:none}body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) .navbar-actions{gap:5px}}
 @media(prefers-reduced-motion:reduce){body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) *,body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) *::before,body:not(.landing-body):not(.auth-body):not(:has(.admin-login-wrap)) *::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* Phone-first layout fixes shared by the signed-in application pages. */
+body.chatbot-page #floatChatBtn,
+body.chatbot-page #floatChatPanel { display:none!important; }
+@media (max-width:640px) {
+  body:not(.landing-body):not(.auth-body) .navbar { gap:8px; padding-inline:14px; }
+  body:not(.landing-body):not(.auth-body) .navbar-tag { display:none!important; }
+  body:not(.landing-body):not(.auth-body) .navbar-brand { flex:0 1 auto; min-width:0; white-space:nowrap; }
+  body:not(.landing-body):not(.auth-body) .navbar-actions { flex:0 1 auto; min-width:0; flex-wrap:nowrap; gap:6px; }
+  body:not(.landing-body):not(.auth-body) .navbar-actions .btn { white-space:nowrap; }
+  body:not(.landing-body):not(.auth-body) .navbar-actions #profileBadgeWrap { min-width:0; }
+  body:not(.landing-body):not(.auth-body) .page-header-row { align-items:stretch; flex-direction:column; }
+  body:not(.landing-body):not(.auth-body) .page-header-row > :is(.btn,a) { align-self:flex-start; }
+  body:not(.landing-body):not(.auth-body) .modal-overlay { padding:12px; padding-bottom:max(12px,env(safe-area-inset-bottom)); }
+  body:not(.landing-body):not(.auth-body) .modal { width:100%; max-width:100%; max-height:calc(100dvh - 24px); padding:18px 16px; }
+  body:not(.landing-body):not(.auth-body) #toastContainer { left:12px; right:12px; bottom:max(12px,env(safe-area-inset-bottom)); width:auto; max-width:none; }
+  body:not(.landing-body):not(.auth-body) #floatChatPanel { right:12px; bottom:calc(78px + env(safe-area-inset-bottom)); width:min(360px,calc(100vw - 24px)); max-height:calc(100dvh - 104px - env(safe-area-inset-bottom)); }
+  body:not(.landing-body):not(.auth-body) #floatChatBtn { right:14px; bottom:calc(14px + env(safe-area-inset-bottom)); }
+  .chat-page { height:calc(100dvh - var(--navbar-h)); min-height:0; margin-top:var(--navbar-h); }
+  .chat-page-body .hamburger,
+  .chatbot-page .hamburger { display:none!important; }
+  .chat-header-bar { align-items:flex-start; }
+  .chat-header-bar > :nth-child(2) { min-width:0; flex:1; }
+  .chat-ai-status { line-height:1.35; }
+  .chat-welcome { width:100%; max-width:34rem; padding:28px 16px; }
+  .msg-wrap { max-width:94%; }
+  .chat-input-area { padding-bottom:max(10px,env(safe-area-inset-bottom)); }
+}
+@media (max-width:380px) {
+  body:not(.landing-body):not(.auth-body) .navbar { padding-inline:10px; }
+  body:not(.landing-body):not(.auth-body) .navbar-brand::before { width:26px; height:26px; flex-basis:26px; }
+  body:not(.landing-body):not(.auth-body) .navbar-actions .btn { padding-inline:8px; font-size:.7rem; }
+  body:not(.landing-body):not(.auth-body) .navbar-actions [aria-label*="quick actions" i] { display:none!important; }
+  .chat-input-area { padding-inline:9px; }
+  .chat-messages-area { padding:10px; }
+  .chat-input-wrap { padding-left:10px; }
+}
